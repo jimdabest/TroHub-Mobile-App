@@ -1,0 +1,10 @@
+jwt:
+  signer-key: ${JWT_SIGNER_KEY:dev-only-signer-key-dev-only-signer-key-dev-only-signer-key-0123456789}
+
+spring:
+  jpa:
+    show-sql: true
+
+logging:
+  level:
+    com.uth.trohub: DEBUG
