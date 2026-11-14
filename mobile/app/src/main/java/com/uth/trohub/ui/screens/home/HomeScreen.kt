@@ -2,244 +2,569 @@ package com.uth.trohub.ui.screens.home
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.TrendingUp
-import androidx.compose.material.icons.filled.Bolt
-import androidx.compose.material.icons.filled.CalendarMonth
-import androidx.compose.material.icons.filled.Campaign
-import androidx.compose.material.icons.filled.Dashboard
-import androidx.compose.material.icons.filled.Payments
-import androidx.compose.material.icons.filled.PersonAdd
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.Icon
-import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
+import androidx.compose.material.icons.filled.*
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.viewmodel.compose.viewModel
+import com.uth.trohub.data.model.ContractResponse
+import com.uth.trohub.data.model.PropertyResponse
 import com.uth.trohub.ui.components.StatusChip
-import com.uth.trohub.ui.theme.AlertBackground
-import com.uth.trohub.ui.theme.AlertRed
-import com.uth.trohub.ui.theme.LightMint
-import com.uth.trohub.ui.theme.PrimaryGreen
-import com.uth.trohub.ui.theme.TextPrimary
-import com.uth.trohub.ui.theme.TextSecondary
-import com.uth.trohub.ui.theme.White
-
-private data class Reminder(
-    val room: String,
-    val detail: String,
-    val timeLabel: String,
-    val urgent: Boolean
-)
-
-private data class RevenuePoint(val month: String, val amount: String, val height: Int)
-
-private val homeReminders = listOf(
-    Reminder(
-        room = "Phòng 204 – Dãy B",
-        detail = "Hết hạn hợp đồng thuê (Khách: Nguyễn Văn An). Hãy liên hệ gia hạn hoặc tìm khách mới.",
-        timeLabel = "5 ngày nữa",
-        urgent = true
-    ),
-    Reminder(
-        room = "Phòng 102 – Dãy A",
-        detail = "Đã gửi thông báo chỉ số điện nước thành công qua tin nhắn Zalo.",
-        timeLabel = "Hôm nay",
-        urgent = false
-    )
-)
-
-private val revenue = listOf(
-    RevenuePoint("Th 5", "19.5", 88), RevenuePoint("Th 6", "20.2", 100),
-    RevenuePoint("Th 7", "21.0", 106), RevenuePoint("Th 8", "20.8", 103),
-    RevenuePoint("Th 9", "21.5", 110), RevenuePoint("Th 10", "22.0", 120)
-)
+import com.uth.trohub.ui.theme.*
+import java.text.NumberFormat
+import java.util.Locale
 
 @Composable
 fun HomeScreen(
+    viewModel: HomeViewModel = viewModel(),
+    onOpenRooms: () -> Unit = {},
+    onOpenTenants: () -> Unit = {},
     onOpenMeterReading: () -> Unit = {},
     onOpenRevenueReport: () -> Unit = {},
     onOpenInvoices: () -> Unit = {}
 ) {
+    val uiState by viewModel.uiState.collectAsState()
+    var showCreatePropertyDialog by remember { mutableStateOf(false) }
+
+    val formatter = NumberFormat.getCurrencyInstance(Locale("vi", "VN"))
+    val formattedExpected = try {
+        val total = if (uiState.totalExpectedRevenue > 0) uiState.totalExpectedRevenue else uiState.totalMonthlyRent
+        formatter.format(total)
+    } catch (_: Exception) {
+        "${uiState.totalExpectedRevenue} đ"
+    }
+    val formattedRent = try {
+        formatter.format(uiState.totalMonthlyRent)
+    } catch (_: Exception) {
+        "${uiState.totalMonthlyRent} đ"
+    }
+    val formattedUtilities = try {
+        formatter.format(uiState.totalUtilityEstimate)
+    } catch (_: Exception) {
+        "${uiState.totalUtilityEstimate} đ"
+    }
+
     LazyColumn(
-        modifier = Modifier.background(LightMint),
-        contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
+        modifier = Modifier
+            .fillMaxSize()
+            .background(LightMint),
+        contentPadding = PaddingValues(16.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
-        item { PaymentNotice(onOpenInvoices) }
-        item { OverviewCards() }
-        item { UtilityShortcuts(onOpenMeterReading, onOpenRevenueReport, onOpenInvoices) }
-        item { RevenueChart() }
+        // 1. Header chọn khu trọ
+        item {
+            PropertySelectorHeader(
+                activeProperty = uiState.activeProperty,
+                allProperties = uiState.properties,
+                onPropertySelect = { viewModel.selectProperty(it) },
+                onAddPropertyClick = { showCreatePropertyDialog = true }
+            )
+        }
+
+        // Lỗi nếu có
+        if (uiState.errorMessage != null) {
+            item {
+                Card(
+                    colors = CardDefaults.cardColors(containerColor = AlertBackground),
+                    shape = RoundedCornerShape(10.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = uiState.errorMessage ?: "",
+                            color = AlertRed,
+                            fontSize = 12.sp,
+                            modifier = Modifier.weight(1f)
+                        )
+                        TextButton(onClick = { viewModel.loadData() }) {
+                            Text("Thử lại", color = AlertRed, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                        }
+                    }
+                }
+            }
+        }
+
+        // 2. Banner quản lý thu tiền phòng
+        item {
+            PaymentBanner(
+                activeContractsCount = uiState.activeContracts.size,
+                formattedExpectedRevenue = formattedExpected,
+                onOpenInvoices = onOpenInvoices
+            )
+        }
+
+        // 3. Thẻ thống kê nhanh tình trạng phòng
+        item {
+            RoomOverviewCards(
+                occupied = uiState.occupiedRooms,
+                total = uiState.totalRooms,
+                rate = uiState.occupancyRate,
+                available = uiState.availableRooms
+            )
+        }
+
+        // 4. Bốn phím tắt chức năng cốt lõi
+        item {
+            CoreFunctionShortcuts(
+                onOpenRooms = onOpenRooms,
+                onOpenTenants = onOpenTenants,
+                onOpenMeterReading = onOpenMeterReading,
+                onOpenInvoices = onOpenInvoices
+            )
+        }
+
+        // 5. Thẻ tóm tắt tài chính & Tiền cọc
+        item {
+            FinancialSummaryCard(
+                totalExpectedRevenue = formattedExpected,
+                roomRentPart = formattedRent,
+                utilitiesPart = formattedUtilities,
+                totalDeposit = try { formatter.format(uiState.totalDeposit) } catch (_: Exception) { "${uiState.totalDeposit} đ" },
+                occupancyRate = uiState.occupancyRate,
+                activeCount = uiState.activeContracts.size,
+                onOpenReport = onOpenRevenueReport
+            )
+        }
+
+        // 6. Danh sách hợp đồng đang hiệu lực
         item {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("Nhắc nhở & Hoạt động", fontWeight = FontWeight.Bold, color = TextPrimary)
+                Text(
+                    text = "Hợp đồng đang hoạt động",
+                    fontWeight = FontWeight.Bold,
+                    color = TextPrimary,
+                    fontSize = 16.sp
+                )
                 Spacer(Modifier.weight(1f))
-                Text("Tất cả", color = PrimaryGreen, fontSize = 13.sp, fontWeight = FontWeight.Medium)
+                Text(
+                    text = "${uiState.activeContracts.size} phòng đang thuê",
+                    color = PrimaryGreen,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.SemiBold
+                )
             }
         }
-        items(homeReminders) { reminder -> ReminderItem(reminder) }
-        item { RentalSummary() }
-    }
-}
 
-@Composable
-private fun PaymentNotice(onOpenInvoices: () -> Unit) {
-    Card(
-        colors = CardDefaults.cardColors(containerColor = PrimaryGreen),
-        shape = RoundedCornerShape(12.dp),
-        modifier = Modifier.clickable(onClick = onOpenInvoices)
-    ) {
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(16.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Column(Modifier.weight(1f)) {
-                Text("KỲ THANH TOÁN THÁNG 10", color = White, fontSize = 11.sp, fontWeight = FontWeight.Medium)
-                Text("8 phòng đang chờ xác nhận\nchuyển khoản", color = White, fontSize = 14.sp)
+        if (uiState.activeContracts.isEmpty()) {
+            item {
+                Card(
+                    colors = CardDefaults.cardColors(containerColor = White),
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(
+                        text = "Chưa có hợp đồng nào đang hoạt động.\nChuyển sang tab 'Phòng' và bấm 'Cho thuê' để tạo hợp đồng mới.",
+                        color = TextSecondary,
+                        fontSize = 12.sp,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.padding(20.dp).fillMaxWidth()
+                    )
+                }
             }
-            StatusChip("Xem ngay", White, PrimaryGreen)
+        } else {
+            items(uiState.activeContracts) { contract ->
+                ContractItemCard(contract)
+            }
         }
     }
-}
 
-@Composable
-private fun OverviewCards() {
-    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-        OverviewCard("Đang thuê", "18/20 phòng", "92% lấp đầy", false, Modifier.weight(1f))
-        OverviewCard("Cần thu", "15.500.000 đ", "Kỳ tháng 10", false, Modifier.weight(1f))
-        OverviewCard("Tổng còn nợ", "3.200.000 đ", "1 phòng quá hạn", true, Modifier.weight(1f))
+    if (showCreatePropertyDialog) {
+        CreatePropertyDialog(
+            onDismiss = { showCreatePropertyDialog = false },
+            onConfirm = { name, address, desc ->
+                viewModel.createProperty(name, address, desc) {
+                    showCreatePropertyDialog = false
+                }
+            }
+        )
     }
 }
 
 @Composable
-private fun OverviewCard(title: String, value: String, caption: String, alert: Boolean, modifier: Modifier) {
-    Card(modifier = modifier, colors = CardDefaults.cardColors(containerColor = White), shape = RoundedCornerShape(12.dp)) {
-        Column(Modifier.padding(12.dp)) {
-            Text(title, color = if (alert) AlertRed else TextSecondary, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Spacer(Modifier.height(7.dp))
-            Text(value, color = if (alert) AlertRed else PrimaryGreen, fontWeight = FontWeight.Bold, fontSize = 16.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Text(caption, color = TextSecondary, fontSize = 10.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-        }
-    }
-}
-
-@Composable
-private fun UtilityShortcuts(
-    onOpenMeterReading: () -> Unit,
-    onOpenRevenueReport: () -> Unit,
-    onOpenInvoices: () -> Unit
+private fun PropertySelectorHeader(
+    activeProperty: PropertyResponse?,
+    allProperties: List<PropertyResponse>,
+    onPropertySelect: (PropertyResponse) -> Unit,
+    onAddPropertyClick: () -> Unit
 ) {
-    val shortcuts = listOf(
-        Triple(Icons.Default.Bolt, "Điện nước", ""), Triple(Icons.Default.CalendarMonth, "Hóa đơn", ""),
-        Triple(Icons.Default.Payments, "Thu tiền", ""), Triple(Icons.Default.PersonAdd, "Thêm khách", ""),
-        Triple(Icons.AutoMirrored.Filled.TrendingUp, "Doanh thu", "")
-    )
-    Column {
-        Text("Tiện ích", color = TextPrimary, fontWeight = FontWeight.Bold)
-        Spacer(Modifier.height(10.dp))
-        Card(colors = CardDefaults.cardColors(containerColor = White), shape = RoundedCornerShape(12.dp)) {
-            Row(Modifier.fillMaxWidth().padding(vertical = 14.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
-                val noShortcutAction: () -> Unit = {}
-                shortcuts.forEachIndexed { index, (icon, label) ->
-                    val onClick: () -> Unit = when (index) {
-                        0 -> onOpenMeterReading
-                        1, 2 -> onOpenInvoices
-                        4 -> onOpenRevenueReport
-                        else -> noShortcutAction
-                    }
-                    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.clickable(onClick = onClick)) {
-                        Box(Modifier.size(40.dp).background(LightMint, RoundedCornerShape(20.dp)), contentAlignment = Alignment.Center) {
-                            Icon(icon, label, tint = PrimaryGreen, modifier = Modifier.size(20.dp))
-                        }
-                        Spacer(Modifier.height(6.dp))
-                        Text(label, color = TextPrimary, fontSize = 10.sp, textAlign = TextAlign.Center)
-                    }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun RevenueChart() {
-    Card(colors = CardDefaults.cardColors(containerColor = White), shape = RoundedCornerShape(12.dp)) {
-        Column(Modifier.fillMaxWidth().padding(14.dp)) {
-            Text("Biểu đồ doanh thu", color = TextPrimary, fontWeight = FontWeight.Bold)
-            Text("Đơn vị: Triệu VNĐ", color = TextSecondary, fontSize = 11.sp)
-            Spacer(Modifier.height(8.dp))
-            Row(Modifier.fillMaxWidth().height(155.dp), horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.Bottom) {
-                revenue.forEachIndexed { index, point ->
-                    Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Bottom) {
-                        Text(point.amount, color = if (index == revenue.lastIndex) White else TextSecondary, fontSize = 10.sp,
-                            modifier = if (index == revenue.lastIndex) Modifier.background(PrimaryGreen, RoundedCornerShape(4.dp)).padding(horizontal = 4.dp, vertical = 2.dp) else Modifier)
-                        Spacer(Modifier.height(5.dp))
-                        Box(Modifier.width(27.dp).height(point.height.dp).background(if (index == revenue.lastIndex) PrimaryGreen else PrimaryGreen.copy(alpha = .78f), RoundedCornerShape(topStart = 7.dp, topEnd = 7.dp)))
-                        Spacer(Modifier.height(7.dp))
-                        Text(point.month, color = if (index == revenue.lastIndex) PrimaryGreen else TextSecondary, fontSize = 10.sp)
-                    }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun ReminderItem(reminder: Reminder) {
-    Card(colors = CardDefaults.cardColors(containerColor = White), shape = RoundedCornerShape(12.dp)) {
-        Column(Modifier.fillMaxWidth().padding(12.dp)) {
+    Card(
+        colors = CardDefaults.cardColors(containerColor = White),
+        shape = RoundedCornerShape(14.dp),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(Modifier.padding(14.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(reminder.room, color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 14.sp, modifier = Modifier.weight(1f))
-                StatusChip(reminder.timeLabel, if (reminder.urgent) AlertBackground else LightMint, if (reminder.urgent) AlertRed else TextSecondary)
-            }
-            Spacer(Modifier.height(7.dp))
-            Text(reminder.detail, color = TextSecondary, fontSize = 12.sp, lineHeight = 17.sp)
-            if (reminder.urgent) {
-                Spacer(Modifier.height(10.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    StatusChip("Gọi điện", PrimaryGreen, White)
-                    StatusChip("Chi tiết", LightMint, PrimaryGreen)
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun RentalSummary() {
-    Column {
-        Text("Khu trọ phụ trách", color = TextPrimary, fontWeight = FontWeight.Bold)
-        Spacer(Modifier.height(10.dp))
-        Card(colors = CardDefaults.cardColors(containerColor = White), shape = RoundedCornerShape(12.dp)) {
-            Row(Modifier.fillMaxWidth().padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
-                Box(Modifier.size(40.dp).background(LightMint, RoundedCornerShape(10.dp)), contentAlignment = Alignment.Center) {
-                    Icon(Icons.Default.Dashboard, null, tint = PrimaryGreen)
+                Box(
+                    modifier = Modifier
+                        .size(42.dp)
+                        .background(LightMint, RoundedCornerShape(10.dp)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(Icons.Default.HomeWork, contentDescription = null, tint = PrimaryGreen)
                 }
                 Spacer(Modifier.width(12.dp))
                 Column(Modifier.weight(1f)) {
-                    Text("Nhà trọ Bình An 1", color = TextPrimary, fontWeight = FontWeight.Bold)
-                    Text("Dãy A – 10 phòng • 95% lấp đầy", color = TextSecondary, fontSize = 12.sp)
+                    Text(
+                        text = "KHU TRỌ HIỆN TẠI",
+                        fontSize = 10.sp,
+                        color = TextSecondary,
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = 0.5.sp
+                    )
+                    Text(
+                        text = activeProperty?.name ?: "Chưa chọn khu trọ",
+                        fontSize = 17.sp,
+                        color = TextPrimary,
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    if (!activeProperty?.address.isNullOrBlank()) {
+                        Text(
+                            text = activeProperty!!.address!!,
+                            fontSize = 11.sp,
+                            color = TextSecondary,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
                 }
-                Icon(Icons.Default.Campaign, null, tint = PrimaryGreen)
+                IconButton(onClick = onAddPropertyClick) {
+                    Icon(Icons.Default.AddBusiness, contentDescription = "Thêm khu trọ", tint = PrimaryGreen)
+                }
+            }
+
+            // Nếu sở hữu nhiều khu trọ, hiển thị thanh cuộn chọn nhanh
+            if (allProperties.size > 1) {
+                Spacer(Modifier.height(10.dp))
+                Row(
+                    modifier = Modifier.horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    allProperties.forEach { prop ->
+                        val isSelected = prop.id == activeProperty?.id
+                        StatusChip(
+                            text = prop.name,
+                            backgroundColor = if (isSelected) PrimaryGreen else LightMint,
+                            textColor = if (isSelected) White else PrimaryGreen,
+                            modifier = Modifier.clickable { onPropertySelect(prop) }
+                        )
+                    }
+                }
             }
         }
     }
+}
+
+@Composable
+private fun PaymentBanner(
+    activeContractsCount: Int,
+    formattedExpectedRevenue: String,
+    onOpenInvoices: () -> Unit
+) {
+    Card(
+        colors = CardDefaults.cardColors(containerColor = PrimaryGreen),
+        shape = RoundedCornerShape(12.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onOpenInvoices)
+    ) {
+        Row(
+            modifier = Modifier.padding(14.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(Modifier.weight(1f)) {
+                Text(
+                    text = "QUẢN LÝ THU TRỌ THÁNG NÀY",
+                    color = White.copy(alpha = 0.85f),
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Bold
+                )
+                Spacer(Modifier.height(3.dp))
+                Text(
+                    text = if (activeContractsCount > 0)
+                        "$activeContractsCount phòng thuê • Dự kiến: $formattedExpectedRevenue"
+                    else
+                        "Chưa có hợp đồng nào đang thuê",
+                    color = White,
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+            StatusChip("Thu tiền", White, PrimaryGreen)
+        }
+    }
+}
+
+@Composable
+private fun RoomOverviewCards(occupied: Int, total: Int, rate: Int, available: Int) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        OverviewMiniCard("Đang thuê", "$occupied/$total", "$rate% lấp đầy", PrimaryGreen, Modifier.weight(1f))
+        OverviewMiniCard("Phòng trống", "$available", "Sẵn sàng", PrimaryGreen, Modifier.weight(1f))
+        OverviewMiniCard("Tổng phòng", "$total", "Trong khu", TextSecondary, Modifier.weight(1f))
+    }
+}
+
+@Composable
+private fun OverviewMiniCard(
+    title: String,
+    mainValue: String,
+    subValue: String,
+    highlightColor: androidx.compose.ui.graphics.Color,
+    modifier: Modifier
+) {
+    Card(
+        modifier = modifier,
+        colors = CardDefaults.cardColors(containerColor = White),
+        shape = RoundedCornerShape(12.dp)
+    ) {
+        Column(Modifier.padding(12.dp)) {
+            Text(title, color = TextSecondary, fontSize = 11.sp, maxLines = 1)
+            Spacer(Modifier.height(4.dp))
+            Text(mainValue, color = highlightColor, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+            Text(subValue, color = TextSecondary, fontSize = 10.sp, maxLines = 1)
+        }
+    }
+}
+
+@Composable
+private fun CoreFunctionShortcuts(
+    onOpenRooms: () -> Unit,
+    onOpenTenants: () -> Unit,
+    onOpenMeterReading: () -> Unit,
+    onOpenInvoices: () -> Unit
+) {
+    Card(
+        colors = CardDefaults.cardColors(containerColor = White),
+        shape = RoundedCornerShape(14.dp),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(Modifier.padding(14.dp)) {
+            Text(
+                text = "Lối tắt quản lý",
+                color = TextPrimary,
+                fontWeight = FontWeight.Bold,
+                fontSize = 14.sp
+            )
+            Spacer(Modifier.height(12.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceAround
+            ) {
+                ShortcutItem(Icons.Default.BedroomParent, "Phòng trọ", onOpenRooms)
+                ShortcutItem(Icons.Default.People, "Khách thuê", onOpenTenants)
+                ShortcutItem(Icons.Default.Bolt, "Ghi điện nước", onOpenMeterReading)
+                ShortcutItem(Icons.Default.ReceiptLong, "Hóa đơn", onOpenInvoices)
+            }
+        }
+    }
+}
+
+@Composable
+private fun ShortcutItem(
+    icon: ImageVector,
+    label: String,
+    onClick: () -> Unit
+) {
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        modifier = Modifier.clickable(onClick = onClick)
+    ) {
+        Box(
+            modifier = Modifier
+                .size(44.dp)
+                .background(LightMint, CircleShape),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(icon, contentDescription = label, tint = PrimaryGreen, modifier = Modifier.size(22.dp))
+        }
+        Spacer(Modifier.height(6.dp))
+        Text(
+            text = label,
+            color = TextPrimary,
+            fontSize = 11.sp,
+            fontWeight = FontWeight.Medium
+        )
+    }
+}
+
+@Composable
+private fun FinancialSummaryCard(
+    totalExpectedRevenue: String,
+    roomRentPart: String,
+    utilitiesPart: String,
+    totalDeposit: String,
+    occupancyRate: Int,
+    activeCount: Int,
+    onOpenReport: () -> Unit
+) {
+    Card(
+        colors = CardDefaults.cardColors(containerColor = White),
+        shape = RoundedCornerShape(14.dp),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(Modifier.padding(16.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text("Tổng quan tài chính", color = TextSecondary, fontSize = 12.sp)
+                    Text("Doanh thu dự kiến tháng", color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                }
+                TextButton(onClick = onOpenReport) {
+                    Text("Chi tiết →", color = PrimaryGreen, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                }
+            }
+
+            Spacer(Modifier.height(10.dp))
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(LightMint.copy(alpha = 0.6f), RoundedCornerShape(10.dp))
+                    .padding(12.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(Modifier.weight(1f)) {
+                    Text("Tổng tiền cần thu (gồm điện nước)", color = TextSecondary, fontSize = 11.sp)
+                    Text(totalExpectedRevenue, color = PrimaryGreen, fontWeight = FontWeight.Bold, fontSize = 18.sp)
+                    Spacer(Modifier.height(2.dp))
+                    Text("Phòng: $roomRentPart • Điện nước: $utilitiesPart", color = TextSecondary, fontSize = 10.sp)
+                }
+                Column(horizontalAlignment = Alignment.End) {
+                    Text("Tiền cọc đang giữ", color = TextSecondary, fontSize = 11.sp)
+                    Text(totalDeposit, color = TextPrimary, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ContractItemCard(contract: ContractResponse) {
+    val formatter = NumberFormat.getCurrencyInstance(Locale("vi", "VN"))
+    val formattedRent = try {
+        formatter.format(contract.monthlyRent ?: 0.0)
+    } catch (_: Exception) {
+        "${contract.monthlyRent} đ"
+    }
+
+    Card(
+        colors = CardDefaults.cardColors(containerColor = White),
+        shape = RoundedCornerShape(12.dp),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Row(
+            modifier = Modifier.padding(14.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(38.dp)
+                    .background(LightMint, RoundedCornerShape(8.dp)),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = contract.roomCode ?: "P",
+                    color = PrimaryGreen,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 13.sp
+                )
+            }
+            Spacer(Modifier.width(12.dp))
+            Column(Modifier.weight(1f)) {
+                Text(
+                    text = "Phòng ${contract.roomCode ?: "N/A"} - ${contract.tenantName ?: "Khách thuê"}",
+                    color = TextPrimary,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 14.sp
+                )
+                Text(
+                    text = "Bắt đầu: ${contract.startDate} • Cọc: ${try { formatter.format(contract.deposit ?: 0.0) } catch (_: Exception) { "0đ" }}",
+                    color = TextSecondary,
+                    fontSize = 11.sp
+                )
+            }
+            Text(
+                text = formattedRent,
+                color = PrimaryGreen,
+                fontWeight = FontWeight.Bold,
+                fontSize = 14.sp
+            )
+        }
+    }
+}
+
+@Composable
+private fun CreatePropertyDialog(
+    onDismiss: () -> Unit,
+    onConfirm: (name: String, address: String?, desc: String?) -> Unit
+) {
+    var name by remember { mutableStateOf("") }
+    var address by remember { mutableStateOf("") }
+    var desc by remember { mutableStateOf("") }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Thêm Nhà Trọ Mới", fontWeight = FontWeight.Bold) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedTextField(
+                    value = name,
+                    onValueChange = { name = it },
+                    label = { Text("Tên nhà trọ (*)") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                OutlinedTextField(
+                    value = address,
+                    onValueChange = { address = it },
+                    label = { Text("Địa chỉ") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                OutlinedTextField(
+                    value = desc,
+                    onValueChange = { desc = it },
+                    label = { Text("Ghi chú / Mô tả") },
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    if (name.isNotBlank()) {
+                        onConfirm(name.trim(), address.trim().ifEmpty { null }, desc.trim().ifEmpty { null })
+                    }
+                },
+                enabled = name.isNotBlank()
+            ) {
+                Text("Tạo")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Hủy")
+            }
+        }
+    )
 }

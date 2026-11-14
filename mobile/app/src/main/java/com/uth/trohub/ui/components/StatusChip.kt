@@ -16,10 +16,11 @@ import androidx.compose.ui.unit.sp
 fun StatusChip(
     text: String,
     backgroundColor: Color,
-    textColor: Color
+    textColor: Color,
+    modifier: Modifier = Modifier
 ) {
     Box(
-        modifier = Modifier
+        modifier = modifier
             .background(color = backgroundColor, shape = RoundedCornerShape(4.dp))
             .padding(horizontal = 8.dp, vertical = 4.dp)
     ) {
