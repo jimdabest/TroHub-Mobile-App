@@ -17,6 +17,9 @@ public class PropertyResponse {
     String name;
     String address;
     String description;
+    String bankName;
+    String bankAccountNumber;
+    String bankAccountHolder;
     PropertyRole myRole;
     Instant createdAt;
     Instant updatedAt;

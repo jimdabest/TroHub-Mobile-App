@@ -38,12 +38,13 @@ public class PropertyService {
     PropertyMapper propertyMapper;
     PropertyAccessService accessService;
 
-    /** Nguoi tao tro thanh OWNER cua nha tro do. */
     public PropertyResponse create(PropertyRequest request) {
         User user = userRepository.findById(SecurityUtils.currentUserId())
                 .orElseThrow(() -> new AppException(ErrorCode.UNAUTHENTICATED));
 
-        Property property = propertyRepository.save(propertyMapper.toProperty(request));
+        Property newProperty = propertyMapper.toProperty(request);
+        applyBankInfo(newProperty, request);
+        Property property = propertyRepository.save(newProperty);
 
         PropertyMember owner = new PropertyMember();
         owner.setProperty(property);
@@ -70,7 +71,36 @@ public class PropertyService {
     public PropertyResponse update(UUID propertyId, PropertyRequest request) {
         var access = accessService.requireOwner(propertyId);
         propertyMapper.update(access.property(), request);
+        applyBankInfo(access.property(), request);
         return toResponse(propertyRepository.save(access.property()), access.role());
+    }
+
+
+    private void applyBankInfo(Property property, PropertyRequest request) {
+        if (request.getBankName() == null && request.getBankAccountNumber() == null
+                && request.getBankAccountHolder() == null) {
+            return;
+        }
+        property.setBankName(resolveBankField(request.getBankName(), property.getBankName()));
+        String number = resolveBankField(request.getBankAccountNumber(), property.getBankAccountNumber());
+        property.setBankAccountNumber(number == null ? null : number.replaceAll("\\s", ""));
+        property.setBankAccountHolder(resolveBankField(request.getBankAccountHolder(), property.getBankAccountHolder()));
+
+        boolean hasName = property.getBankName() != null;
+        boolean hasNumber = property.getBankAccountNumber() != null;
+        boolean hasHolder = property.getBankAccountHolder() != null;
+        if ((hasName || hasNumber || hasHolder) && !(hasName && hasNumber && hasHolder)) {
+            throw new AppException(ErrorCode.BANK_INFO_INCOMPLETE);
+        }
+        if (hasNumber && !property.getBankAccountNumber().matches("\\d{6,19}")) {
+            throw new AppException(ErrorCode.BANK_ACCOUNT_INVALID);
+        }
+    }
+
+    private static String resolveBankField(String incoming, String current) {
+        if (incoming == null) return current;
+        String trimmed = incoming.trim();
+        return trimmed.isEmpty() ? null : trimmed;
     }
 
     public void delete(UUID propertyId) {

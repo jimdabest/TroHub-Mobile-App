@@ -32,6 +32,8 @@ public enum ErrorCode {
     MEMBER_ROLE_INVALID(1206, "Chỉ có thể thêm thành viên với vai trò quản lý", HttpStatus.BAD_REQUEST),
     USERNAME_REQUIRED(1207, "Tên đăng nhập không được để trống", HttpStatus.BAD_REQUEST),
     ROLE_REQUIRED(1208, "Vai trò không được để trống", HttpStatus.BAD_REQUEST),
+    BANK_INFO_INCOMPLETE(1209, "Phải nhập đủ tên ngân hàng, số tài khoản và tên chủ tài khoản", HttpStatus.BAD_REQUEST),
+    BANK_ACCOUNT_INVALID(1210, "Số tài khoản chỉ gồm chữ số, dài 6 đến 19 ký tự", HttpStatus.BAD_REQUEST),
 
     ROOM_NOT_FOUND(1301, "Không tìm thấy phòng", HttpStatus.NOT_FOUND),
     ROOM_CODE_REQUIRED(1302, "Số phòng không được để trống", HttpStatus.BAD_REQUEST),
@@ -59,6 +61,28 @@ public enum ErrorCode {
     SERVICE_TYPE_REQUIRED(1603, "Loại dịch vụ không được để trống", HttpStatus.BAD_REQUEST),
     SERVICE_UNIT_REQUIRED(1604, "Đơn vị tính không được để trống", HttpStatus.BAD_REQUEST),
     SERVICE_PRICE_INVALID(1605, "Đơn giá phải lớn hơn hoặc bằng 0", HttpStatus.BAD_REQUEST),
+
+    METER_ROOM_REQUIRED(1701, "Phải chọn phòng để ghi chỉ số", HttpStatus.BAD_REQUEST),
+    METER_SERVICE_REQUIRED(1702, "Phải chọn dịch vụ điện/nước", HttpStatus.BAD_REQUEST),
+    METER_PERIOD_REQUIRED(1703, "Kỳ ghi chỉ số không được để trống", HttpStatus.BAD_REQUEST),
+    METER_CURRENT_REQUIRED(1704, "Chỉ số mới không được để trống", HttpStatus.BAD_REQUEST),
+    METER_VALUE_INVALID(1705, "Chỉ số mới phải lớn hơn hoặc bằng chỉ số cũ và không được âm", HttpStatus.BAD_REQUEST),
+    METER_SERVICE_TYPE_INVALID(1706, "Dịch vụ này không phải loại tính theo chỉ số (điện/nước)", HttpStatus.BAD_REQUEST),
+    METER_READING_EXISTED(1707, "Phòng đã có chỉ số của dịch vụ này trong kỳ", HttpStatus.BAD_REQUEST),
+
+    INVOICE_NOT_FOUND(1801, "Không tìm thấy hóa đơn", HttpStatus.NOT_FOUND),
+    INVOICE_PERIOD_REQUIRED(1802, "Kỳ hóa đơn không được để trống", HttpStatus.BAD_REQUEST),
+    INVOICE_HAS_PAYMENTS(1803, "Hóa đơn đã có khoản thanh toán, không thể xóa", HttpStatus.BAD_REQUEST),
+
+    PAYMENT_AMOUNT_INVALID(1901, "Số tiền thanh toán phải lớn hơn 0", HttpStatus.BAD_REQUEST),
+    PAYMENT_METHOD_REQUIRED(1902, "Phương thức thanh toán không được để trống", HttpStatus.BAD_REQUEST),
+    PAYMENT_METHOD_INVALID(1903, "Chỉ ghi nhận thủ công bằng tiền mặt hoặc chuyển khoản", HttpStatus.BAD_REQUEST),
+    PAYMENT_EXCEEDS_REMAINING(1904, "Số tiền vượt quá số còn nợ của hóa đơn", HttpStatus.BAD_REQUEST),
+    TENANT_PHONE_REQUIRED(2101, "Tài khoản chưa có số điện thoại để liên kết với hồ sơ người thuê", HttpStatus.BAD_REQUEST),
+    PAYMENT_AMOUNT_OUT_OF_RANGE(2002, "Số tiền thanh toán qua MoMo phải từ 1.000đ đến 50.000.000đ", HttpStatus.BAD_REQUEST),
+    PAYMENT_GATEWAY_ERROR(2003, "Cổng thanh toán không phản hồi hoặc từ chối yêu cầu", HttpStatus.BAD_GATEWAY),
+    PAYMENT_GATEWAY_NOT_CONFIGURED(2001, "Cổng thanh toán online chưa được cấu hình", HttpStatus.SERVICE_UNAVAILABLE),
+    INVOICE_NOT_PAYABLE(1905, "Hóa đơn đã thanh toán đủ hoặc không còn hiệu lực", HttpStatus.BAD_REQUEST),
     ;
 
     int code;
