@@ -84,7 +84,8 @@ public class OnlinePaymentSupport {
         if (tx.getAmount().compareTo(paidAmount) != 0) {
             return IpnResult.AMOUNT_MISMATCH;
         }
-        if (tx.getStatus() != PaymentTransactionStatus.PENDING) {
+        // EXPIRED vẫn xử lý được: IPN thành công có thể đến sau khi scheduler đã đánh dấu hết hạn
+        if (tx.getStatus() != PaymentTransactionStatus.PENDING && tx.getStatus() != PaymentTransactionStatus.EXPIRED) {
             return IpnResult.ALREADY_PROCESSED;
         }
         if (stillPending) {
@@ -97,8 +98,12 @@ public class OnlinePaymentSupport {
             Invoice invoice = tx.getInvoice();
             var applied = paymentService.tryApplyPayment(invoice.getProperty().getId(), invoice.getId(),
                     tx.getAmount(), method, provider + " GD " + providerTxnNo);
-            tx.setStatus(PaymentTransactionStatus.SUCCESS);
-            if (applied.isEmpty()) {
+            if (applied.isPresent()) {
+                tx.setStatus(PaymentTransactionStatus.SUCCESS);
+            } else {
+                // Tiền đã vào cổng nhưng hóa đơn không nhận được (đã hủy, đã trả đủ, vượt số còn lại):
+                // lưu dấu vết để chủ trọ đối soát thay vì chỉ ghi log.
+                tx.setStatus(PaymentTransactionStatus.SUCCESS_UNAPPLIED);
                 log.warn("{} txn {} thanh toán thành công nhưng không ghi nhận được vào hóa đơn {}: cần đối soát/hoàn tiền",
                         provider, txnRef, invoice.getId());
             }

@@ -103,6 +103,7 @@ public class MomoService {
         }
 
         return OnlinePaymentResponse.builder()
+                .transactionId(pending.transactionId())
                 .txnRef(orderId)
                 .paymentUrl(response.payUrl())
                 .deeplink(response.deeplink())

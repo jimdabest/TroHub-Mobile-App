@@ -5,6 +5,7 @@ import lombok.experimental.FieldDefaults;
 
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.util.UUID;
 
 @Data
 @Builder
@@ -12,6 +13,7 @@ import java.time.Instant;
 @AllArgsConstructor
 @FieldDefaults(level = AccessLevel.PRIVATE)
 public class OnlinePaymentResponse {
+    UUID transactionId;   // dùng để app gọi API tra trạng thái giao dịch
     String txnRef;
     String paymentUrl;
     BigDecimal amount;

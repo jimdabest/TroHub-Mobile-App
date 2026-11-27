@@ -87,7 +87,7 @@ public class RoomService {
     }
 
     public void delete(UUID propertyId, UUID roomId) {
-        accessService.requireMember(propertyId);
+        accessService.requireOwner(propertyId);
         Room room = find(propertyId, roomId);
         if (room.getStatus() == RoomStatus.OCCUPIED
                 || contractRepository.existsByRoomIdAndStatusAndDeletedFalse(roomId, ContractStatus.ACTIVE)) {

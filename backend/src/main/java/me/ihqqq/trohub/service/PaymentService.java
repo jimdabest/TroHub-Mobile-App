@@ -4,6 +4,7 @@ import lombok.AccessLevel;
 import lombok.RequiredArgsConstructor;
 import lombok.experimental.FieldDefaults;
 import me.ihqqq.trohub.dto.request.PaymentRequest;
+import me.ihqqq.trohub.dto.response.InvoiceSummaryResponse;
 import me.ihqqq.trohub.dto.response.PaymentCreationResponse;
 import me.ihqqq.trohub.dto.response.PaymentResponse;
 import me.ihqqq.trohub.entity.Invoice;
@@ -66,6 +67,24 @@ public class PaymentService {
         return record(invoice, amount, method, note);
     }
 
+
+    public InvoiceSummaryResponse voidPayment(UUID propertyId, UUID invoiceId, UUID paymentId) {
+        accessService.requireOwner(propertyId);
+        Invoice invoice = invoiceRepository.findForUpdate(invoiceId, propertyId)
+                .orElseThrow(() -> new AppException(ErrorCode.INVOICE_NOT_FOUND));
+        Payment payment = paymentRepository.findByIdAndInvoiceIdAndDeletedFalse(paymentId, invoiceId)
+                .orElseThrow(() -> new AppException(ErrorCode.PAYMENT_NOT_FOUND));
+        if (!payment.getMethod().isManual()) {
+            throw new AppException(ErrorCode.PAYMENT_NOT_VOIDABLE);
+        }
+        payment.setDeleted(true);
+        paymentRepository.save(payment);
+
+        invoice.setPaidAmount(invoice.getPaidAmount().subtract(payment.getAmount()).max(BigDecimal.ZERO));
+        invoice.refreshStatus();
+        return invoiceMapper.toSummary(invoiceRepository.save(invoice));
+    }
+
     public Optional<PaymentCreationResponse> tryApplyPayment(UUID propertyId, UUID invoiceId, BigDecimal amount,
                                                              PaymentMethod method, String note) {
         return invoiceRepository.findForUpdate(invoiceId, propertyId)
@@ -91,8 +110,7 @@ public class PaymentService {
         paymentRepository.save(payment);
 
         invoice.setPaidAmount(invoice.getPaidAmount().add(amount));
-        invoice.setStatus(invoice.getPaidAmount().compareTo(invoice.getTotalAmount()) >= 0
-                ? InvoiceStatus.PAID : InvoiceStatus.PARTIALLY_PAID);
+        invoice.refreshStatus();
         invoiceRepository.save(invoice);
 
         return PaymentCreationResponse.builder()

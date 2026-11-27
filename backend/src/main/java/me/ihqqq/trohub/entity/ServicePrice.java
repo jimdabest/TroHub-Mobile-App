@@ -7,6 +7,8 @@ import me.ihqqq.trohub.entity.BaseEntity;
 import me.ihqqq.trohub.enums.ServiceType;
 
 import java.math.BigDecimal;
+import java.util.ArrayList;
+import java.util.List;
 
 @Getter
 @Setter
@@ -35,4 +37,9 @@ public class ServicePrice extends BaseEntity {
 
     @Column(nullable = false)
     boolean active = true;
+
+    @ElementCollection(fetch = FetchType.LAZY)
+    @CollectionTable(name = "service_price_tier", joinColumns = @JoinColumn(name = "service_price_id"))
+    @OrderColumn(name = "tier_order")
+    List<PriceTier> tiers = new ArrayList<>();
 }

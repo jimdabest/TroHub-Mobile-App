@@ -11,10 +11,14 @@ import me.ihqqq.trohub.dto.response.PropertyResponse;
 import me.ihqqq.trohub.entity.Property;
 import me.ihqqq.trohub.entity.PropertyMember;
 import me.ihqqq.trohub.entity.User;
+import me.ihqqq.trohub.enums.ContractStatus;
+import me.ihqqq.trohub.enums.InvoiceStatus;
 import me.ihqqq.trohub.enums.PropertyRole;
 import me.ihqqq.trohub.exception.AppException;
 import me.ihqqq.trohub.exception.ErrorCode;
 import me.ihqqq.trohub.mapper.PropertyMapper;
+import me.ihqqq.trohub.repository.ContractRepository;
+import me.ihqqq.trohub.repository.InvoiceRepository;
 import me.ihqqq.trohub.repository.PropertyMemberRepository;
 import me.ihqqq.trohub.repository.PropertyRepository;
 import me.ihqqq.trohub.repository.UserRepository;
@@ -22,6 +26,7 @@ import me.ihqqq.trohub.util.SecurityUtils;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.EnumSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.UUID;
@@ -35,6 +40,8 @@ public class PropertyService {
     PropertyRepository propertyRepository;
     PropertyMemberRepository propertyMemberRepository;
     UserRepository userRepository;
+    ContractRepository contractRepository;
+    InvoiceRepository invoiceRepository;
     PropertyMapper propertyMapper;
     PropertyAccessService accessService;
 
@@ -105,6 +112,11 @@ public class PropertyService {
 
     public void delete(UUID propertyId) {
         var access = accessService.requireOwner(propertyId);
+        if (contractRepository.existsByPropertyIdAndStatusAndDeletedFalse(propertyId, ContractStatus.ACTIVE)
+                || invoiceRepository.existsByPropertyIdAndStatusInAndDeletedFalse(propertyId,
+                EnumSet.of(InvoiceStatus.ISSUED, InvoiceStatus.PARTIALLY_PAID))) {
+            throw new AppException(ErrorCode.PROPERTY_HAS_ACTIVE_DATA);
+        }
         access.property().setDeleted(true);
         propertyRepository.save(access.property());
     }

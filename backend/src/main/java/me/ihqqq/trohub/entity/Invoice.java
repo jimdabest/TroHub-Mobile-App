@@ -57,6 +57,24 @@ public class Invoice extends BaseEntity {
     @OneToMany(mappedBy = "invoice", cascade = CascadeType.ALL, orphanRemoval = true)
     List<InvoiceItem> items = new ArrayList<>();
 
+    /** Tính lại trạng thái theo tổng tiền và số đã thu. DRAFT/CANCELLED giữ nguyên. */
+    public void refreshStatus() {
+        if (status == InvoiceStatus.DRAFT || status == InvoiceStatus.CANCELLED) return;
+        if (paidAmount.compareTo(totalAmount) >= 0) {
+            status = InvoiceStatus.PAID;
+        } else if (paidAmount.signum() > 0) {
+            status = InvoiceStatus.PARTIALLY_PAID;
+        } else {
+            status = InvoiceStatus.ISSUED;
+        }
+    }
+
+    /** Quá hạn = chưa thanh toán đủ và đã qua hạn thanh toán. Tính theo ngày, không lưu trạng thái nên không bao giờ cũ. */
+    public boolean isOverdue(LocalDate today) {
+        return (status == InvoiceStatus.ISSUED || status == InvoiceStatus.PARTIALLY_PAID)
+                && dueDate != null && dueDate.isBefore(today);
+    }
+
     public void addItem(InvoiceItem item) {
         item.setInvoice(this);
         items.add(item);

@@ -10,6 +10,7 @@ import me.ihqqq.trohub.dto.request.OnlinePaymentRequest;
 import me.ihqqq.trohub.dto.response.ApiResponse;
 import me.ihqqq.trohub.dto.response.OnlinePaymentResponse;
 import me.ihqqq.trohub.service.VnPayService;
+import me.ihqqq.trohub.util.ClientIpUtils;
 import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.util.HtmlUtils;
@@ -31,7 +32,7 @@ public class VnPayController {
     ApiResponse<OnlinePaymentResponse> createUrl(@PathVariable UUID propertyId, @PathVariable UUID invoiceId,
                                                  @RequestBody(required = false) OnlinePaymentRequest request,
                                                  HttpServletRequest http) {
-        return ApiResponse.ok(vnPayService.createPaymentUrl(propertyId, invoiceId, request, clientIp(http)));
+        return ApiResponse.ok(vnPayService.createPaymentUrl(propertyId, invoiceId, request, ClientIpUtils.resolve(http)));
     }
 
     @GetMapping("/payments/vnpay/ipn")
@@ -95,11 +96,5 @@ public class VnPayController {
                 .meta{font-size:13px;color:#777}
                 </style></head><body><div class="card"><h1>%s</h1><p>%s</p>%s</div></body></html>
                 """.formatted(color, title, detail, extra);
-    }
-
-    private static String clientIp(HttpServletRequest http) {
-        String forwarded = http.getHeader("X-Forwarded-For");
-        String ip = (forwarded != null && !forwarded.isBlank()) ? forwarded.split(",")[0].trim() : http.getRemoteAddr();
-        return ip.contains(":") ? "127.0.0.1" : ip;
     }
 }

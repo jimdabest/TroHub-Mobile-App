@@ -8,19 +8,13 @@ import me.ihqqq.trohub.configuration.VnPayProperties;
 import me.ihqqq.trohub.constant.AppConstant;
 import me.ihqqq.trohub.dto.request.OnlinePaymentRequest;
 import me.ihqqq.trohub.dto.response.OnlinePaymentResponse;
-import me.ihqqq.trohub.entity.Invoice;
-import me.ihqqq.trohub.entity.PaymentTransaction;
-import me.ihqqq.trohub.enums.InvoiceStatus;
 import me.ihqqq.trohub.enums.PaymentMethod;
+import me.ihqqq.trohub.enums.IpnResult;
 import me.ihqqq.trohub.enums.PaymentProvider;
-import me.ihqqq.trohub.enums.PaymentTransactionStatus;
-import me.ihqqq.trohub.exception.AppException;
 import me.ihqqq.trohub.exception.ErrorCode;
-import me.ihqqq.trohub.repository.InvoiceRepository;
-import me.ihqqq.trohub.repository.PaymentTransactionRepository;
+import me.ihqqq.trohub.exception.AppException;
 import me.ihqqq.trohub.util.VnPayUtils;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -35,15 +29,15 @@ import java.util.UUID;
 @Service
 @RequiredArgsConstructor
 @FieldDefaults(level = AccessLevel.PRIVATE, makeFinal = true)
-@Transactional
 public class VnPayService {
 
     static final DateTimeFormatter VNP_DATE = DateTimeFormatter.ofPattern("yyyyMMddHHmmss");
 
+    static final BigDecimal MIN_AMOUNT = BigDecimal.valueOf(5_000);
+    static final BigDecimal MAX_AMOUNT = BigDecimal.valueOf(999_999_999);
+
     VnPayProperties props;
-    InvoiceRepository invoiceRepository;
-    PaymentTransactionRepository transactionRepository;
-    PaymentService paymentService;
+    OnlinePaymentSupport support;
     PropertyAccessService accessService;
 
 
@@ -64,30 +58,10 @@ public class VnPayService {
             throw new AppException(ErrorCode.PAYMENT_GATEWAY_NOT_CONFIGURED);
         }
 
-        Invoice invoice = invoiceRepository.findByIdAndPropertyIdAndDeletedFalse(invoiceId, propertyId)
-                .orElseThrow(() -> new AppException(ErrorCode.INVOICE_NOT_FOUND));
-        if (invoice.getStatus() != InvoiceStatus.ISSUED && invoice.getStatus() != InvoiceStatus.PARTIALLY_PAID) {
-            throw new AppException(ErrorCode.INVOICE_NOT_PAYABLE);
-        }
-
-        BigDecimal remaining = invoice.getTotalAmount().subtract(invoice.getPaidAmount());
-        BigDecimal amount = (request != null && request.getAmount() != null) ? request.getAmount() : remaining;
-        // VNPay chỉ nhận số nguyên đồng
-        if (amount.signum() <= 0 || amount.stripTrailingZeros().scale() > 0) {
-            throw new AppException(ErrorCode.PAYMENT_AMOUNT_INVALID);
-        }
-        if (amount.compareTo(remaining) > 0) {
-            throw new AppException(ErrorCode.PAYMENT_EXCEEDS_REMAINING);
-        }
-
         String txnRef = UUID.randomUUID().toString().replace("-", "");
-        PaymentTransaction tx = new PaymentTransaction();
-        tx.setInvoice(invoice);
-        tx.setProvider(PaymentProvider.VNPAY);
-        tx.setTxnRef(txnRef);
-        tx.setAmount(amount);
-        tx.setStatus(PaymentTransactionStatus.PENDING);
-        transactionRepository.save(tx);
+        var pending = support.preparePending(propertyId, invoiceId,
+                request != null ? request.getAmount() : null, PaymentProvider.VNPAY, txnRef, MIN_AMOUNT, MAX_AMOUNT);
+        BigDecimal amount = pending.amount();
 
         LocalDateTime now = LocalDateTime.now(AppConstant.BUSINESS_ZONE);
         LocalDateTime expire = now.plusMinutes(props.expireMinutes());
@@ -100,7 +74,7 @@ public class VnPayService {
         fields.put("vnp_CurrCode", "VND");
         fields.put("vnp_TxnRef", txnRef);
         fields.put("vnp_OrderInfo", "Thanh toan hoa don phong "
-                + invoice.getRoom().getCode().replaceAll("[^A-Za-z0-9 ]", ""));
+                + pending.roomCode().replaceAll("[^A-Za-z0-9 ]", ""));
         fields.put("vnp_OrderType", "other");
         fields.put("vnp_Locale", "vn");
         fields.put("vnp_ReturnUrl", props.returnUrl());
@@ -112,6 +86,7 @@ public class VnPayService {
                 + "&vnp_SecureHash=" + VnPayUtils.sign(props.hashSecret(), fields);
 
         return OnlinePaymentResponse.builder()
+                .transactionId(pending.transactionId())
                 .txnRef(txnRef)
                 .paymentUrl(url)
                 .amount(amount)
@@ -128,46 +103,25 @@ public class VnPayService {
             return response("97", "Invalid signature");
         }
 
-        PaymentTransaction tx = transactionRepository
-                .findForUpdate(PaymentProvider.VNPAY, fields.getOrDefault("vnp_TxnRef", "")).orElse(null);
-        if (tx == null) {
-            return response("01", "Order not found");
-        }
-
-        BigDecimal vnpAmount;
+        BigDecimal paid;
         try {
-            vnpAmount = new BigDecimal(fields.getOrDefault("vnp_Amount", ""));
+            paid = new BigDecimal(fields.getOrDefault("vnp_Amount", "")).movePointLeft(2);
         } catch (NumberFormatException e) {
             return response("04", "Invalid amount");
-        }
-        if (tx.getAmount().movePointRight(2).compareTo(vnpAmount) != 0) {
-            return response("04", "Invalid amount");
-        }
-
-        if (tx.getStatus() != PaymentTransactionStatus.PENDING) {
-            return response("02", "Order already confirmed");
         }
 
         boolean success = "00".equals(fields.get("vnp_ResponseCode"))
                 && "00".equals(fields.get("vnp_TransactionStatus"));
-        tx.setProviderTxnNo(fields.get("vnp_TransactionNo"));
-        tx.setRawIpn(VnPayUtils.query(fields));
+        IpnResult result = support.settle(PaymentProvider.VNPAY, fields.getOrDefault("vnp_TxnRef", ""), paid,
+                false, success, fields.get("vnp_TransactionNo"), VnPayUtils.query(fields), PaymentMethod.VNPAY);
 
-        if (success) {
-            Invoice invoice = tx.getInvoice();
-            var applied = paymentService.tryApplyPayment(invoice.getProperty().getId(), invoice.getId(),
-                    tx.getAmount(), PaymentMethod.VNPAY, "VNPay GD " + tx.getProviderTxnNo());
-            tx.setStatus(PaymentTransactionStatus.SUCCESS);
-            if (applied.isEmpty()) {
-                log.warn("VNPay txn {} thanh toán thành công nhưng không ghi nhận được vào hóa đơn {}: cần đối soát/hoàn tiền",
-                        tx.getTxnRef(), invoice.getId());
-            }
-        } else {
-            tx.setStatus(PaymentTransactionStatus.FAILED);
-        }
-        transactionRepository.save(tx);
-
-        return response("00", "Confirm Success");
+        return switch (result) {
+            case SETTLED -> response("00", "Confirm Success");
+            case ALREADY_PROCESSED, IGNORED_PENDING -> response("02", "Order already confirmed");
+            case NOT_FOUND -> response("01", "Order not found");
+            case AMOUNT_MISMATCH -> response("04", "Invalid amount");
+            case INVALID_SIGNATURE -> response("97", "Invalid signature");
+        };
     }
 
 
@@ -175,7 +129,6 @@ public class VnPayService {
                                String txnRef, BigDecimal amount) {}
 
 
-    @Transactional(readOnly = true)
     public ReturnResult verifyReturn(Map<String, String> params) {
         Map<String, String> fields = signedFields(params);
         if (!hasValidSignature(fields, params.get("vnp_SecureHash"))) {

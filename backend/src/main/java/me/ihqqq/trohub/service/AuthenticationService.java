@@ -41,16 +41,18 @@ public class AuthenticationService {
     InvalidatedTokenRepository invalidatedTokenRepository;
     PasswordEncoder passwordEncoder;
     JwtProperties jwtProperties;
+    LoginAttemptService loginAttemptService;
 
-    public AuthenticationResponse authenticate(AuthenticationRequest request) {
+    public AuthenticationResponse authenticate(AuthenticationRequest request, String clientIp) {
         String username = request.getUsername().trim().toLowerCase(Locale.ROOT);
+        loginAttemptService.checkAllowed(clientIp, username);
 
-        User user = userRepository.findByUsername(username)
-                .orElseThrow(() -> new AppException(ErrorCode.UNAUTHENTICATED));
-
-        if (!user.isEnabled() || !passwordEncoder.matches(request.getPassword(), user.getPassword())) {
+        User user = userRepository.findByUsername(username).orElse(null);
+        if (user == null || !user.isEnabled() || !passwordEncoder.matches(request.getPassword(), user.getPassword())) {
+            loginAttemptService.recordFailure(clientIp, username);
             throw new AppException(ErrorCode.UNAUTHENTICATED);
         }
+        loginAttemptService.recordSuccess(clientIp, username);
 
         return AuthenticationResponse.builder().token(generateToken(user)).authenticated(true).build();
     }

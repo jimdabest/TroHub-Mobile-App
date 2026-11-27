@@ -10,6 +10,7 @@ import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import java.time.Instant;
 
 @Repository
 public interface MeterReadingRepository extends JpaRepository<MeterReading, UUID> {
@@ -30,4 +31,12 @@ public interface MeterReadingRepository extends JpaRepository<MeterReading, UUID
 
     Optional<MeterReading> findFirstByRoomIdAndServicePriceIdAndPeriodLessThanAndDeletedFalseOrderByPeriodDesc(
             UUID roomId, UUID servicePriceId, LocalDate period);
+
+    @Query("""
+            select m from MeterReading m
+            join fetch m.room
+            join fetch m.servicePrice
+            where m.property.id = :propertyId and m.updatedAt > :since
+            """)
+    List<MeterReading> findAllChangedSince(@Param("propertyId") UUID propertyId, @Param("since") Instant since);
 }

@@ -6,3 +6,9 @@ jwt:
 spring:
   jpa:
     show-sql: false
+
+springdoc:
+  api-docs:
+    enabled: false
+  swagger-ui:
+    enabled: false

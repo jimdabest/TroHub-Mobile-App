@@ -2,6 +2,7 @@ package me.ihqqq.trohub.controller;
 
 import io.swagger.v3.oas.annotations.security.SecurityRequirements;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import lombok.AccessLevel;
 import lombok.RequiredArgsConstructor;
@@ -14,6 +15,7 @@ import me.ihqqq.trohub.dto.response.ApiResponse;
 import me.ihqqq.trohub.dto.response.AuthenticationResponse;
 import me.ihqqq.trohub.dto.response.IntrospectResponse;
 import me.ihqqq.trohub.service.AuthenticationService;
+import me.ihqqq.trohub.util.ClientIpUtils;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
@@ -27,8 +29,9 @@ public class AuthenticationController {
     AuthenticationService authenticationService;
 
     @PostMapping("/token")
-    ApiResponse<AuthenticationResponse> authenticate(@RequestBody @Valid AuthenticationRequest request) {
-        return ApiResponse.ok(authenticationService.authenticate(request));
+    ApiResponse<AuthenticationResponse> authenticate(@RequestBody @Valid AuthenticationRequest request,
+                                                     HttpServletRequest http) {
+        return ApiResponse.ok(authenticationService.authenticate(request, ClientIpUtils.resolve(http)));
     }
 
     @PostMapping("/introspect")

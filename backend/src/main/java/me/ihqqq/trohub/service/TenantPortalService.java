@@ -5,16 +5,15 @@ import lombok.RequiredArgsConstructor;
 import lombok.experimental.FieldDefaults;
 import me.ihqqq.trohub.dto.request.OnlinePaymentRequest;
 import me.ihqqq.trohub.dto.response.*;
+import me.ihqqq.trohub.constant.AppConstant;
 import me.ihqqq.trohub.entity.Contract;
 import me.ihqqq.trohub.entity.Property;
-import me.ihqqq.trohub.entity.User;
 import me.ihqqq.trohub.enums.InvoiceStatusFilter;
 import me.ihqqq.trohub.exception.AppException;
 import me.ihqqq.trohub.exception.ErrorCode;
 import me.ihqqq.trohub.mapper.InvoiceMapper;
 import me.ihqqq.trohub.mapper.PaymentMapper;
 import me.ihqqq.trohub.repository.*;
-import me.ihqqq.trohub.util.PhoneUtils;
 import me.ihqqq.trohub.util.SecurityUtils;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -24,26 +23,18 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.UUID;
 
-/**
- * Phân hệ khách thuê. Quyền truy cập KHÔNG dựa trên property_member mà dựa trên số điện thoại:
- * tài khoản đang đăng nhập thấy dữ liệu của các hồ sơ người thuê có cùng số điện thoại (đã chuẩn hóa).
- * Mọi truy vấn đều ràng buộc theo tập tenantId đó nên khách không bao giờ thấy hóa đơn của người khác;
- * tìm không thấy được trả 404 như hóa đơn không tồn tại.
- *
- * Không đặt @Transactional ở cấp class: các hàm gọi cổng thanh toán phải nằm ngoài transaction chỉ-đọc.
- */
 @Service
 @RequiredArgsConstructor
 @FieldDefaults(level = AccessLevel.PRIVATE, makeFinal = true)
 public class TenantPortalService {
 
-    UserRepository userRepository;
     TenantRepository tenantRepository;
     ContractRepository contractRepository;
     InvoiceRepository invoiceRepository;
     PaymentRepository paymentRepository;
     InvoiceMapper invoiceMapper;
     PaymentMapper paymentMapper;
+    PaymentTransactionRepository transactionRepository;
     VnPayService vnPayService;
     MomoService momoService;
 
@@ -62,7 +53,10 @@ public class TenantPortalService {
         var invoices = period == null
                 ? invoiceRepository.findAllForTenants(tenantIds, statuses)
                 : invoiceRepository.findAllForTenantsAndPeriod(tenantIds, period.withDayOfMonth(1), statuses);
-        return invoices.stream().map(invoiceMapper::toSummary).toList();
+        LocalDate today = LocalDate.now(AppConstant.BUSINESS_ZONE);
+        return invoices.stream()
+                .filter(i -> filter != InvoiceStatusFilter.OVERDUE || i.isOverdue(today))
+                .map(invoiceMapper::toSummary).toList();
     }
 
     @Transactional(readOnly = true)
@@ -88,6 +82,14 @@ public class TenantPortalService {
     }
 
 
+    @Transactional(readOnly = true)
+    public PaymentTransactionResponse transaction(UUID transactionId) {
+        List<UUID> tenantIds = myTenantIds();
+        if (tenantIds.isEmpty()) throw new AppException(ErrorCode.TRANSACTION_NOT_FOUND);
+        return PaymentTransactionResponse.from(transactionRepository.findByIdForTenants(transactionId, tenantIds)
+                .orElseThrow(() -> new AppException(ErrorCode.TRANSACTION_NOT_FOUND)));
+    }
+
     public OnlinePaymentResponse payWithVnPay(UUID invoiceId, OnlinePaymentRequest request, String clientIp) {
         UUID propertyId = ownedInvoicePropertyId(invoiceId);
         return vnPayService.createPaymentUrlForTenant(propertyId, invoiceId, request, clientIp);
@@ -108,13 +110,7 @@ public class TenantPortalService {
     }
 
     private List<UUID> myTenantIds() {
-        User user = userRepository.findById(SecurityUtils.currentUserId())
-                .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_EXISTED));
-        String phone = PhoneUtils.normalize(user.getPhone());
-        if (phone == null) {
-            throw new AppException(ErrorCode.TENANT_PHONE_REQUIRED);
-        }
-        return tenantRepository.findIdsByPhoneNormalized(phone);
+        return tenantRepository.findIdsByUserId(SecurityUtils.currentUserId());
     }
 
     private TenantContractResponse toContractResponse(Contract c) {

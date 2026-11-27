@@ -1,13 +1,17 @@
 package me.ihqqq.trohub.controller;
 
+import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.Valid;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.AccessLevel;
 import lombok.RequiredArgsConstructor;
 import lombok.experimental.FieldDefaults;
+import me.ihqqq.trohub.dto.request.LinkTenantRequest;
 import me.ihqqq.trohub.dto.request.OnlinePaymentRequest;
 import me.ihqqq.trohub.dto.response.*;
 import me.ihqqq.trohub.enums.InvoiceStatusFilter;
+import me.ihqqq.trohub.service.TenantLinkService;
 import me.ihqqq.trohub.service.TenantPortalService;
 import me.ihqqq.trohub.util.ClientIpUtils;
 import org.springframework.format.annotation.DateTimeFormat;
@@ -25,6 +29,7 @@ import java.util.UUID;
 public class TenantPortalController {
 
     TenantPortalService tenantPortalService;
+    TenantLinkService tenantLinkService;
 
     @GetMapping("/contracts")
     ApiResponse<List<TenantContractResponse>> contracts() {
@@ -46,6 +51,17 @@ public class TenantPortalController {
     @GetMapping("/invoices/{invoiceId}/payments")
     ApiResponse<List<PaymentResponse>> payments(@PathVariable UUID invoiceId) {
         return ApiResponse.ok(tenantPortalService.payments(invoiceId));
+    }
+
+    @PostMapping("/link")
+    @Operation(summary = "Liên kết tài khoản đang đăng nhập với hồ sơ người thuê bằng mã mời của chủ trọ")
+    ApiResponse<LinkedTenantResponse> link(@RequestBody @Valid LinkTenantRequest request) {
+        return ApiResponse.ok(tenantLinkService.link(request.getCode()));
+    }
+
+    @GetMapping("/payment-transactions/{transactionId}")
+    ApiResponse<PaymentTransactionResponse> transaction(@PathVariable UUID transactionId) {
+        return ApiResponse.ok(tenantPortalService.transaction(transactionId));
     }
 
     @PostMapping("/invoices/{invoiceId}/vnpay/create-url")

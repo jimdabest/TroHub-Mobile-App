@@ -16,6 +16,7 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import java.time.Instant;
 
 @Repository
 public interface InvoiceRepository extends JpaRepository<Invoice, UUID> {
@@ -50,6 +51,8 @@ public interface InvoiceRepository extends JpaRepository<Invoice, UUID> {
 
     boolean existsByIdAndPropertyIdAndDeletedFalse(UUID id, UUID propertyId);
 
+    boolean existsByPropertyIdAndStatusInAndDeletedFalse(UUID propertyId, Collection<InvoiceStatus> statuses);
+
     interface InvoiceTotals {
         BigDecimal getTotal();   // null nếu kỳ chưa có hóa đơn nào
         BigDecimal getPaid();
@@ -69,7 +72,7 @@ public interface InvoiceRepository extends JpaRepository<Invoice, UUID> {
     @Query("""
             select i from Invoice i
             join fetch i.room r
-            where i.contract.tenant.id in :tenantIds and i.status in :statuses and i.deleted = false
+            where i.contract.tenant.id in :tenantIds and i.property.deleted = false and i.status in :statuses and i.deleted = false
             order by i.period desc, r.code asc
             """)
     List<Invoice> findAllForTenants(@Param("tenantIds") Collection<UUID> tenantIds,
@@ -78,7 +81,7 @@ public interface InvoiceRepository extends JpaRepository<Invoice, UUID> {
     @Query("""
             select i from Invoice i
             join fetch i.room r
-            where i.contract.tenant.id in :tenantIds and i.period = :period
+            where i.contract.tenant.id in :tenantIds and i.property.deleted = false and i.period = :period
               and i.status in :statuses and i.deleted = false
             order by r.code asc
             """)
@@ -89,7 +92,7 @@ public interface InvoiceRepository extends JpaRepository<Invoice, UUID> {
     @EntityGraph(attributePaths = {"room", "items"})
     @Query("""
             select i from Invoice i
-            where i.id = :id and i.contract.tenant.id in :tenantIds
+            where i.id = :id and i.contract.tenant.id in :tenantIds and i.property.deleted = false
               and i.status in :statuses and i.deleted = false
             """)
     Optional<Invoice> findDetailForTenants(@Param("id") UUID id,
@@ -98,12 +101,52 @@ public interface InvoiceRepository extends JpaRepository<Invoice, UUID> {
 
     @Query("""
             select i.property.id from Invoice i
-            where i.id = :id and i.contract.tenant.id in :tenantIds
+            where i.id = :id and i.contract.tenant.id in :tenantIds and i.property.deleted = false
               and i.status in :statuses and i.deleted = false
             """)
     Optional<UUID> findPropertyIdForTenants(@Param("id") UUID id,
                                             @Param("tenantIds") Collection<UUID> tenantIds,
                                             @Param("statuses") Collection<InvoiceStatus> statuses);
+
+    interface PeriodTotals {
+        LocalDate getPeriod();
+        BigDecimal getTotal();
+        BigDecimal getPaid();
+    }
+
+    @Query("""
+            select i.period as period, sum(i.totalAmount) as total, sum(i.paidAmount) as paid
+            from Invoice i
+            where i.property.id = :propertyId and i.period between :from and :to
+              and i.status in :statuses and i.deleted = false
+            group by i.period
+            order by i.period
+            """)
+    List<PeriodTotals> sumTotalsByPeriodRange(@Param("propertyId") UUID propertyId,
+                                              @Param("from") LocalDate from, @Param("to") LocalDate to,
+                                              @Param("statuses") Collection<InvoiceStatus> statuses);
+
+    @Query("""
+            select count(i) as invoiceCount, sum(i.totalAmount - i.paidAmount) as amount
+            from Invoice i
+            where i.contract.id = :contractId and i.status in :statuses and i.deleted = false
+            """)
+    OverdueTotals sumOutstandingByContract(@Param("contractId") UUID contractId,
+                                           @Param("statuses") Collection<InvoiceStatus> statuses);
+
+    interface OverdueTotals {
+        Long getInvoiceCount();
+        BigDecimal getAmount();   // null nếu không có hóa đơn quá hạn
+    }
+
+    @Query("""
+            select count(i) as invoiceCount, sum(i.totalAmount - i.paidAmount) as amount
+            from Invoice i
+            where i.property.id = :propertyId and i.status in :statuses and i.deleted = false
+              and i.dueDate is not null and i.dueDate < :today
+            """)
+    OverdueTotals sumOverdue(@Param("propertyId") UUID propertyId, @Param("today") LocalDate today,
+                             @Param("statuses") Collection<InvoiceStatus> statuses);
 
     @Query("""
             select i.room.id from Invoice i
@@ -111,4 +154,12 @@ public interface InvoiceRepository extends JpaRepository<Invoice, UUID> {
               and i.deleted = false and i.status <> me.ihqqq.trohub.enums.InvoiceStatus.CANCELLED
             """)
     List<UUID> findInvoicedRoomIds(@Param("propertyId") UUID propertyId, @Param("period") LocalDate period);
+
+    @Query("""
+            select distinct i from Invoice i
+            join fetch i.room
+            left join fetch i.items
+            where i.property.id = :propertyId and i.updatedAt > :since
+            """)
+    List<Invoice> findAllChangedSince(@Param("propertyId") UUID propertyId, @Param("since") Instant since);
 }

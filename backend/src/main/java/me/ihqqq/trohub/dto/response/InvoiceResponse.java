@@ -28,6 +28,8 @@ public class InvoiceResponse {
     BigDecimal paidAmount;
     BigDecimal remainingAmount;
     InvoiceStatus status;
+    boolean overdue;        // chưa trả đủ và đã qua hạn thanh toán
+    long daysOverdue;       // số ngày quá hạn, 0 nếu chưa quá hạn
     String note;
     List<InvoiceItemResponse> items;
     Instant createdAt;

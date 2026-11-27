@@ -10,6 +10,7 @@ public interface TenantMapper {
     Tenant toTenant(TenantRequest request);
 
     @Mapping(source = "property.id", target = "propertyId")
+    @Mapping(target = "linked", expression = "java(tenant.getUserId() != null)")
     TenantResponse toResponse(Tenant tenant);
 
     void update(@MappingTarget Tenant tenant, TenantRequest request);
