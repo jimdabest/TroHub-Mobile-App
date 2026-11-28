@@ -7,7 +7,7 @@ object TokenManager {
     private const val PREFS_NAME = "trohub_prefs"
     private const val KEY_TOKEN = "jwt_token"
     private const val KEY_BASE_URL = "base_url"
-    const val DEFAULT_BASE_URL = "http://192.168.2.168:8080/api/v1/"
+    const val DEFAULT_BASE_URL = "http://192.168.2.167:8080/api/v1/"
     private const val KEY_ACTIVE_PROPERTY_ID = "active_property_id"
     private const val KEY_ACTIVE_PROPERTY_NAME = "active_property_name"
     private const val KEY_BANK_NAME = "bank_name"

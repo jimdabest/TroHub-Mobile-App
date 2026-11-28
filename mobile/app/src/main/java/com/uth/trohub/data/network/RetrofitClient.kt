@@ -49,7 +49,7 @@ object RetrofitClient {
             chain.proceed(request)
         } catch (e: IOException) {
             val currentHost = request.url.host
-            val fallbackCandidates = listOf("192.168.2.168", "10.0.2.2", "127.0.0.1")
+            val fallbackCandidates = listOf("192.168.2.167", "192.168.2.168", "10.0.2.2", "127.0.0.1")
                 .filter { it != currentHost }
 
             var lastError: IOException = e
