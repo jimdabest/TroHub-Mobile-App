@@ -4,6 +4,7 @@ import lombok.AccessLevel;
 import lombok.RequiredArgsConstructor;
 import lombok.experimental.FieldDefaults;
 import me.ihqqq.trohub.dto.request.TenantRequest;
+import me.ihqqq.trohub.dto.response.PageResponse;
 import me.ihqqq.trohub.dto.response.TenantResponse;
 import me.ihqqq.trohub.entity.Tenant;
 import me.ihqqq.trohub.enums.ContractStatus;
@@ -12,6 +13,8 @@ import me.ihqqq.trohub.exception.ErrorCode;
 import me.ihqqq.trohub.mapper.TenantMapper;
 import me.ihqqq.trohub.repository.ContractRepository;
 import me.ihqqq.trohub.repository.TenantRepository;
+import me.ihqqq.trohub.util.PagingUtils;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -30,10 +33,11 @@ public class TenantService {
     PropertyAccessService accessService;
 
     @Transactional(readOnly = true)
-    public List<TenantResponse> list(UUID propertyId) {
+    public PageResponse<TenantResponse> list(UUID propertyId, int page, int size) {
         accessService.requireMember(propertyId);
-        return tenantRepository.findAllByPropertyIdAndDeletedFalseOrderByFullNameAsc(propertyId).stream()
-                .map(tenantMapper::toResponse).toList();
+        var pageable = PagingUtils.pageable(page, size, Sort.by("fullName").ascending().and(Sort.by("id")));
+        return PageResponse.from(tenantRepository.findAllByPropertyIdAndDeletedFalse(propertyId, pageable),
+                tenantMapper::toResponse);
     }
 
     @Transactional(readOnly = true)
@@ -57,7 +61,7 @@ public class TenantService {
     }
 
     public void delete(UUID propertyId, UUID tenantId) {
-        accessService.requireMember(propertyId);
+        accessService.requireOwner(propertyId);
         Tenant tenant = find(propertyId, tenantId);
         if (contractRepository.existsByTenantIdAndStatusAndDeletedFalse(tenantId, ContractStatus.ACTIVE)) {
             throw new AppException(ErrorCode.TENANT_HAS_ACTIVE_CONTRACT);

@@ -11,10 +11,14 @@ import me.ihqqq.trohub.dto.response.PropertyResponse;
 import me.ihqqq.trohub.entity.Property;
 import me.ihqqq.trohub.entity.PropertyMember;
 import me.ihqqq.trohub.entity.User;
+import me.ihqqq.trohub.enums.ContractStatus;
+import me.ihqqq.trohub.enums.InvoiceStatus;
 import me.ihqqq.trohub.enums.PropertyRole;
 import me.ihqqq.trohub.exception.AppException;
 import me.ihqqq.trohub.exception.ErrorCode;
 import me.ihqqq.trohub.mapper.PropertyMapper;
+import me.ihqqq.trohub.repository.ContractRepository;
+import me.ihqqq.trohub.repository.InvoiceRepository;
 import me.ihqqq.trohub.repository.PropertyMemberRepository;
 import me.ihqqq.trohub.repository.PropertyRepository;
 import me.ihqqq.trohub.repository.UserRepository;
@@ -22,6 +26,7 @@ import me.ihqqq.trohub.util.SecurityUtils;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.EnumSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.UUID;
@@ -35,15 +40,18 @@ public class PropertyService {
     PropertyRepository propertyRepository;
     PropertyMemberRepository propertyMemberRepository;
     UserRepository userRepository;
+    ContractRepository contractRepository;
+    InvoiceRepository invoiceRepository;
     PropertyMapper propertyMapper;
     PropertyAccessService accessService;
 
-    /** Nguoi tao tro thanh OWNER cua nha tro do. */
     public PropertyResponse create(PropertyRequest request) {
         User user = userRepository.findById(SecurityUtils.currentUserId())
                 .orElseThrow(() -> new AppException(ErrorCode.UNAUTHENTICATED));
 
-        Property property = propertyRepository.save(propertyMapper.toProperty(request));
+        Property newProperty = propertyMapper.toProperty(request);
+        applyBankInfo(newProperty, request);
+        Property property = propertyRepository.save(newProperty);
 
         PropertyMember owner = new PropertyMember();
         owner.setProperty(property);
@@ -70,11 +78,45 @@ public class PropertyService {
     public PropertyResponse update(UUID propertyId, PropertyRequest request) {
         var access = accessService.requireOwner(propertyId);
         propertyMapper.update(access.property(), request);
+        applyBankInfo(access.property(), request);
         return toResponse(propertyRepository.save(access.property()), access.role());
+    }
+
+
+    private void applyBankInfo(Property property, PropertyRequest request) {
+        if (request.getBankName() == null && request.getBankAccountNumber() == null
+                && request.getBankAccountHolder() == null) {
+            return;
+        }
+        property.setBankName(resolveBankField(request.getBankName(), property.getBankName()));
+        String number = resolveBankField(request.getBankAccountNumber(), property.getBankAccountNumber());
+        property.setBankAccountNumber(number == null ? null : number.replaceAll("\\s", ""));
+        property.setBankAccountHolder(resolveBankField(request.getBankAccountHolder(), property.getBankAccountHolder()));
+
+        boolean hasName = property.getBankName() != null;
+        boolean hasNumber = property.getBankAccountNumber() != null;
+        boolean hasHolder = property.getBankAccountHolder() != null;
+        if ((hasName || hasNumber || hasHolder) && !(hasName && hasNumber && hasHolder)) {
+            throw new AppException(ErrorCode.BANK_INFO_INCOMPLETE);
+        }
+        if (hasNumber && !property.getBankAccountNumber().matches("\\d{6,19}")) {
+            throw new AppException(ErrorCode.BANK_ACCOUNT_INVALID);
+        }
+    }
+
+    private static String resolveBankField(String incoming, String current) {
+        if (incoming == null) return current;
+        String trimmed = incoming.trim();
+        return trimmed.isEmpty() ? null : trimmed;
     }
 
     public void delete(UUID propertyId) {
         var access = accessService.requireOwner(propertyId);
+        if (contractRepository.existsByPropertyIdAndStatusAndDeletedFalse(propertyId, ContractStatus.ACTIVE)
+                || invoiceRepository.existsByPropertyIdAndStatusInAndDeletedFalse(propertyId,
+                EnumSet.of(InvoiceStatus.ISSUED, InvoiceStatus.PARTIALLY_PAID))) {
+            throw new AppException(ErrorCode.PROPERTY_HAS_ACTIVE_DATA);
+        }
         access.property().setDeleted(true);
         propertyRepository.save(access.property());
     }

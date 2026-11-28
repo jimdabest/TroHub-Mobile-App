@@ -6,6 +6,7 @@ import me.ihqqq.trohub.enums.ServiceType;
 
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.util.List;
 import java.util.UUID;
 
 @Data
@@ -21,6 +22,7 @@ public class ServicePriceResponse {
     String unit;
     BigDecimal unitPrice;
     boolean active;
+    List<PriceTierResponse> tiers;
     Instant createdAt;
     Instant updatedAt;
 }

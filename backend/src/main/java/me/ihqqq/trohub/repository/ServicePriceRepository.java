@@ -7,9 +7,13 @@ import org.springframework.stereotype.Repository;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import java.time.Instant;
 
 @Repository
 public interface ServicePriceRepository extends JpaRepository<ServicePrice, UUID> {
     List<ServicePrice> findAllByPropertyIdAndDeletedFalseOrderByNameAsc(UUID propertyId);
     Optional<ServicePrice> findByIdAndPropertyIdAndDeletedFalse(UUID id, UUID propertyId);
+
+    /** Dùng cho đồng bộ: gồm cả dòng đã xóa mềm (để báo cho client xóa). */
+    List<ServicePrice> findAllByPropertyIdAndUpdatedAtAfter(UUID propertyId, Instant since);
 }

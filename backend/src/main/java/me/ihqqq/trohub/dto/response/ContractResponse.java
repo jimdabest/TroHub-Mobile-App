@@ -25,7 +25,14 @@ public class ContractResponse {
     LocalDate endDate;
     BigDecimal monthlyRent;
     BigDecimal deposit;
+    int occupants;
+    boolean depositSettled;       // đã quyết toán tiền cọc
+    BigDecimal depositRefunded;   // đã hoàn lại cho khách
+    BigDecimal depositDeducted;   // giữ lại (nợ, hư hỏng...)
+    String depositNote;
     ContractStatus status;
+    boolean expired;         // ACTIVE nhưng đã qua ngày kết thúc dự kiến (khách có thể vẫn đang ở, cần gia hạn hoặc kết thúc)
+    Long daysUntilEnd;       // số ngày đến ngày kết thúc dự kiến, âm nếu đã qua; null nếu không có ngày kết thúc hoặc đã kết thúc
     String note;
     Instant createdAt;
     Instant updatedAt;

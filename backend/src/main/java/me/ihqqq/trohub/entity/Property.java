@@ -19,4 +19,13 @@ public class Property extends BaseEntity {
 
     String address;
     String description;
+
+    @Column(name = "bank_name", length = 100)
+    String bankName;
+
+    @Column(name = "bank_account_number", length = 30)
+    String bankAccountNumber;
+
+    @Column(name = "bank_account_holder", length = 100)
+    String bankAccountHolder;
 }

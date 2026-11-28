@@ -18,6 +18,7 @@ public class TenantResponse {
     String phone;
     String idNumber;
     String note;
+    boolean linked;   // đã có tài khoản liên kết (vào được tenant portal)
     Instant createdAt;
     Instant updatedAt;
 }

@@ -43,6 +43,19 @@ public class Contract extends BaseEntity {
     @Column(nullable = false)
     BigDecimal deposit;
 
+    @Column(nullable = false)
+    int occupants = 1;
+
+    /** Quyết toán cọc khi kết thúc hợp đồng; cả hai null = chưa quyết toán. */
+    @Column(name = "deposit_refunded")
+    BigDecimal depositRefunded;
+
+    @Column(name = "deposit_deducted")
+    BigDecimal depositDeducted;
+
+    @Column(name = "deposit_note", length = 500)
+    String depositNote;
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)
     ContractStatus status;

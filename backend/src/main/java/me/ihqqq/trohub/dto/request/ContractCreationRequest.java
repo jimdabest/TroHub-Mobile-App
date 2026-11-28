@@ -1,6 +1,7 @@
 package me.ihqqq.trohub.dto.request;
 
 import jakarta.validation.constraints.DecimalMin;
+import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotNull;
 import lombok.*;
 import lombok.experimental.FieldDefaults;
@@ -26,5 +27,7 @@ public class ContractCreationRequest {
     BigDecimal monthlyRent;
     @DecimalMin(value = "0", message = "CONTRACT_AMOUNT_INVALID")
     BigDecimal deposit;
+    @Min(value = 1, message = "CONTRACT_OCCUPANTS_INVALID")
+    Integer occupants;   // mặc định 1
     String note;
 }

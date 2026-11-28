@@ -30,8 +30,8 @@ import java.util.List;
 @FieldDefaults(level = AccessLevel.PRIVATE, makeFinal = true)
 public class SecurityConfig {
 
-    static final String[] PUBLIC_POST = {"/users", "/auth/token", "/auth/introspect", "/auth/refresh", "/auth/logout"};
-    static final String[] PUBLIC_GET = {"/actuator/health", "/actuator/health/**",
+    static final String[] PUBLIC_POST = {"/payments/momo/ipn", "/users", "/auth/token", "/auth/introspect", "/auth/refresh", "/auth/logout"};
+    static final String[] PUBLIC_GET = {"/payments/momo/return", "/payments/vnpay/ipn", "/payments/vnpay/return", "/actuator/health", "/actuator/health/**",
             "/swagger-ui.html", "/swagger-ui/**", "/v3/api-docs", "/v3/api-docs/**"};
 
     CustomJwtDecoder customJwtDecoder;

@@ -1,5 +1,6 @@
 package me.ihqqq.trohub.dto.request;
 
+import jakarta.validation.Valid;
 import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
@@ -8,6 +9,7 @@ import lombok.experimental.FieldDefaults;
 import me.ihqqq.trohub.enums.ServiceType;
 
 import java.math.BigDecimal;
+import java.util.List;
 
 @Data
 @Builder
@@ -25,4 +27,6 @@ public class ServicePriceRequest {
     @DecimalMin(value = "0", message = "SERVICE_PRICE_INVALID")
     BigDecimal unitPrice;
     Boolean active;
+    @Valid
+    List<PriceTierRequest> tiers;
 }
