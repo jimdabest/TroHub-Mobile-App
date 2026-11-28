@@ -331,6 +331,46 @@ class RoomViewModel : ViewModel() {
         }
     }
 
+    fun renewContract(contractId: String, endDate: String, monthlyRent: Double?, onSuccess: () -> Unit) {
+        val propertyId = TokenManager.getActivePropertyId() ?: return
+        viewModelScope.launch {
+            try {
+                val req = com.uth.trohub.data.model.ContractRenewRequest(endDate = endDate, monthlyRent = monthlyRent)
+                val res = RetrofitClient.contractApi.renew(propertyId, contractId, req)
+                if (res.isSuccessful && res.body()?.code == 1000) {
+                    loadRooms(force = true)
+                    onSuccess()
+                } else {
+                    _uiState.value = _uiState.value.copy(
+                        errorMessage = "Gia hạn hợp đồng thất bại: ${res.body()?.message ?: res.code()}"
+                    )
+                }
+            } catch (e: Exception) {
+                _uiState.value = _uiState.value.copy(errorMessage = "Lỗi: ${e.localizedMessage}")
+            }
+        }
+    }
+
+    fun updateOccupants(contractId: String, occupants: Int, onSuccess: () -> Unit) {
+        val propertyId = TokenManager.getActivePropertyId() ?: return
+        viewModelScope.launch {
+            try {
+                val req = com.uth.trohub.data.model.ContractOccupantsRequest(occupants = occupants)
+                val res = RetrofitClient.contractApi.updateOccupants(propertyId, contractId, req)
+                if (res.isSuccessful && res.body()?.code == 1000) {
+                    loadRooms(force = true)
+                    onSuccess()
+                } else {
+                    _uiState.value = _uiState.value.copy(
+                        errorMessage = "Cập nhật số người thất bại: ${res.body()?.message ?: res.code()}"
+                    )
+                }
+            } catch (e: Exception) {
+                _uiState.value = _uiState.value.copy(errorMessage = "Lỗi: ${e.localizedMessage}")
+            }
+        }
+    }
+
     fun deleteRoom(roomId: String) {
         val propertyId = TokenManager.getActivePropertyId() ?: return
         viewModelScope.launch {

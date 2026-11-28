@@ -123,4 +123,20 @@ object RetrofitClient {
     val servicePriceApi: ServicePriceApiService by lazy {
         retrofit.create(ServicePriceApiService::class.java)
     }
+
+    val invoiceApi: InvoiceApiService by lazy {
+        retrofit.create(InvoiceApiService::class.java)
+    }
+
+    val meterReadingApi: MeterReadingApiService by lazy {
+        retrofit.create(MeterReadingApiService::class.java)
+    }
+
+    val paymentApi: PaymentApiService by lazy {
+        retrofit.create(PaymentApiService::class.java)
+    }
+
+    val revenueReportApi: RevenueReportApiService by lazy {
+        retrofit.create(RevenueReportApiService::class.java)
+    }
 }

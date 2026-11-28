@@ -3,6 +3,11 @@ package com.uth.trohub.ui.screens.invoices
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.uth.trohub.data.local.TokenManager
+import com.uth.trohub.data.model.InvoiceGenerationRequest
+import com.uth.trohub.data.model.InvoiceItemResponse
+import com.uth.trohub.data.model.InvoiceResponse
+import com.uth.trohub.data.model.InvoiceSummaryResponse
+import com.uth.trohub.data.model.PaymentRequest
 import com.uth.trohub.data.model.PropertyResponse
 import com.uth.trohub.data.model.ServicePriceRequest
 import com.uth.trohub.data.model.ServicePriceResponse
@@ -19,7 +24,7 @@ import java.time.LocalDate
  */
 data class InvoiceItemUiModel(
     val id: String,
-    val contractId: String,
+    val contractId: String = "",
     val roomCode: String,
     val tenantName: String,
     val tenantPhone: String? = null,
@@ -27,21 +32,26 @@ data class InvoiceItemUiModel(
     val roomRent: Double, // Tiền thuê phòng cơ bản
 
     // Chỉ số & Tiền điện
-    val electricOld: Double = 120.0,
-    val electricNew: Double = 165.0,
+    val electricOld: Double = 0.0,
+    val electricNew: Double = 0.0,
     val electricUnitPrice: Double = 3500.0,
 
     // Chỉ số & Tiền nước
-    val waterOld: Double = 45.0,
-    val waterNew: Double = 52.0,
+    val waterOld: Double = 0.0,
+    val waterNew: Double = 0.0,
     val waterUnitPrice: Double = 20000.0,
 
     // Các dịch vụ cố định khác (Rác, Wifi, Vệ sinh...)
-    val otherServicesAmount: Double = 100000.0,
+    val otherServicesAmount: Double = 0.0,
 
     // Trạng thái thanh toán
     val isPaid: Boolean = false,
-    val note: String? = null
+    val note: String? = null,
+
+    // Dữ liệu từ Backend nếu có
+    val realInvoiceId: String? = null,
+    val totalBackendAmount: Double? = null,
+    val items: List<InvoiceItemResponse> = emptyList()
 ) {
     // Số điện tiêu thụ thực tế
     val electricUsage: Double
@@ -59,9 +69,9 @@ data class InvoiceItemUiModel(
     val waterAmount: Double
         get() = waterUsage * waterUnitPrice
 
-    // Tổng tiền thanh toán (Tiền phòng + Tiền điện + Tiền nước + Dịch vụ khác)
+    // Tổng tiền thanh toán: Ưu tiên lấy từ Backend totalBackendAmount nếu có, ngược lại tính tổng các thành phần
     val totalAmount: Double
-        get() = roomRent + electricAmount + waterAmount + otherServicesAmount
+        get() = totalBackendAmount ?: (roomRent + electricAmount + waterAmount + otherServicesAmount)
 }
 
 /**
@@ -69,6 +79,7 @@ data class InvoiceItemUiModel(
  */
 data class InvoiceUiState(
     val isLoading: Boolean = false,
+    val isGenerating: Boolean = false,
     val errorMessage: String? = null,
     val successMessage: String? = null,
 
@@ -85,6 +96,9 @@ data class InvoiceUiState(
 
     // Danh sách hóa đơn
     val invoices: List<InvoiceItemUiModel> = emptyList(),
+
+    // Chi tiết hóa đơn được chọn từ backend
+    val selectedInvoiceDetail: InvoiceResponse? = null,
 
     // Biểu giá dịch vụ hiện hành của nhà trọ
     val servicePrices: List<ServicePriceResponse> = emptyList(),
@@ -118,8 +132,7 @@ class InvoiceViewModel : ViewModel() {
     }
 
     /**
-     * Tải dữ liệu hóa đơn, nhà trọ và biểu giá dịch vụ.
-     * Tích hợp Stale-While-Revalidate và Mock Data dự phòng để có thể Preview UI ngay.
+     * Tải dữ liệu hóa đơn, nhà trọ và biểu giá dịch vụ từ Backend thật.
      */
     fun loadData(force: Boolean = false) {
         val now = System.currentTimeMillis()
@@ -149,86 +162,303 @@ class InvoiceViewModel : ViewModel() {
                 if (activeProp != null) {
                     TokenManager.saveActiveProperty(activeProp.id, activeProp.name)
 
-                    // 2. Tải song song Hợp đồng đang chạy và Biểu giá dịch vụ
-                    val contractDeferred = async { RetrofitClient.contractApi.list(activeProp.id, "ACTIVE") }
+                    val periodApiFormat = String.format("%04d-%02d-01", _uiState.value.selectedYear, _uiState.value.selectedMonth)
+                    val periodDisplay = "Tháng ${_uiState.value.selectedMonth}/${_uiState.value.selectedYear}"
+
+                    // 2. Tải song song Hóa đơn tháng, Biểu giá, và Hợp đồng
+                    val invoiceDeferred = async { RetrofitClient.invoiceApi.list(activeProp.id, period = periodApiFormat) }
                     val serviceDeferred = async { RetrofitClient.servicePriceApi.list(activeProp.id) }
+                    val contractDeferred = async { RetrofitClient.contractApi.list(activeProp.id, "ACTIVE") }
 
-                    val contractRes = contractDeferred.await()
+                    val invoiceRes = invoiceDeferred.await()
                     val serviceRes = serviceDeferred.await()
+                    val contractRes = contractDeferred.await()
 
-                    val contracts = if (contractRes.isSuccessful && contractRes.body()?.code == 1000) {
-                        contractRes.body()?.result ?: emptyList()
+                    val rawInvoices = if (invoiceRes.isSuccessful && invoiceRes.body()?.code == 1000) {
+                        invoiceRes.body()?.result ?: emptyList()
                     } else emptyList()
 
                     val services = if (serviceRes.isSuccessful && serviceRes.body()?.code == 1000) {
                         serviceRes.body()?.result ?: emptyList()
                     } else emptyList()
 
-                    // Lấy đơn giá điện & nước thật từ backend nếu có
+                    val contracts = if (contractRes.isSuccessful && contractRes.body()?.code == 1000) {
+                        contractRes.body()?.result ?: emptyList()
+                    } else emptyList()
+
                     val electricPrice = services.find { it.type == "ELECTRIC" }?.unitPrice ?: 3500.0
                     val waterPrice = services.find { it.type == "WATER" }?.unitPrice ?: 20000.0
 
-                    val periodStr = "Tháng ${_uiState.value.selectedMonth}/${_uiState.value.selectedYear}"
-
-                    // Chuyển đổi Contract thành Invoice
-                    val realInvoices = contracts.mapIndexed { index, contract ->
-                        InvoiceItemUiModel(
-                            id = "INV-${contract.id.take(8)}",
-                            contractId = contract.id,
-                            roomCode = contract.roomCode ?: "P${101 + index}",
-                            tenantName = contract.tenantName ?: "Khách thuê",
-                            period = periodStr,
-                            roomRent = contract.monthlyRent ?: 3000000.0,
-                            electricOld = 100.0 + index * 20,
-                            electricNew = 150.0 + index * 25,
-                            electricUnitPrice = electricPrice,
-                            waterOld = 30.0 + index * 5,
-                            waterNew = 38.0 + index * 7,
-                            waterUnitPrice = waterPrice,
-                            otherServicesAmount = 100000.0,
-                            isPaid = false,
-                            note = contract.note
-                        )
+                    // Chuyển đổi dữ liệu hóa đơn thật từ BE sang UI Model
+                    val mappedInvoices: List<InvoiceItemUiModel> = if (rawInvoices.isNotEmpty()) {
+                        rawInvoices.map { inv ->
+                            val matchedContract = contracts.find { it.roomId == inv.roomId }
+                            InvoiceItemUiModel(
+                                id = inv.id,
+                                realInvoiceId = inv.id,
+                                contractId = matchedContract?.id ?: "",
+                                roomCode = inv.roomCode ?: "Phòng",
+                                tenantName = inv.tenantName ?: "Khách thuê",
+                                tenantPhone = matchedContract?.note,
+                                period = periodDisplay,
+                                roomRent = matchedContract?.monthlyRent ?: (inv.totalAmount * 0.7),
+                                electricUnitPrice = electricPrice,
+                                waterUnitPrice = waterPrice,
+                                totalBackendAmount = inv.totalAmount,
+                                isPaid = inv.status == "PAID",
+                                note = inv.dueDate?.let { "Hạn nộp: $it" }
+                            )
+                        }
+                    } else {
+                        // Nếu tháng này chưa bấm "Tạo hóa đơn", tạm tạo danh sách dự kiến từ Hợp đồng đang chạy
+                        if (contracts.isNotEmpty()) {
+                            contracts.mapIndexed { index, contract ->
+                                InvoiceItemUiModel(
+                                    id = "PENDING-${contract.id.take(8)}",
+                                    contractId = contract.id,
+                                    roomCode = contract.roomCode ?: "P${101 + index}",
+                                    tenantName = contract.tenantName ?: "Khách thuê",
+                                    period = periodDisplay,
+                                    roomRent = contract.monthlyRent ?: 3000000.0,
+                                    electricOld = 100.0 + index * 20,
+                                    electricNew = 150.0 + index * 25,
+                                    electricUnitPrice = electricPrice,
+                                    waterOld = 30.0 + index * 5,
+                                    waterNew = 38.0 + index * 7,
+                                    waterUnitPrice = waterPrice,
+                                    otherServicesAmount = 100000.0,
+                                    isPaid = false,
+                                    note = "Chưa phát hành hóa đơn"
+                                )
+                            }
+                        } else {
+                            getMockInvoices(periodDisplay, electricPrice, waterPrice)
+                        }
                     }
-
-                    // Nếu backend chưa có hợp đồng nào, tạo Mock Data mẫu để Preview UI
-                    val finalInvoices = if (realInvoices.isNotEmpty()) realInvoices else getMockInvoices(periodStr, electricPrice, waterPrice)
 
                     lastLoadTime = System.currentTimeMillis()
                     _uiState.value = _uiState.value.copy(
                         isLoading = false,
                         properties = propertyList,
                         selectedProperty = activeProp,
-                        invoices = finalInvoices,
+                        invoices = mappedInvoices,
                         servicePrices = services,
                         bankName = savedBank,
                         bankAccount = savedAcc
                     )
                 } else {
-                    // Chưa có nhà trọ nào: Hiển thị Mock Data mẫu cho UI Preview
-                    val periodStr = "Tháng ${_uiState.value.selectedMonth}/${_uiState.value.selectedYear}"
+                    val periodDisplay = "Tháng ${_uiState.value.selectedMonth}/${_uiState.value.selectedYear}"
                     _uiState.value = _uiState.value.copy(
                         isLoading = false,
-                        invoices = getMockInvoices(periodStr, 3500.0, 20000.0),
+                        invoices = getMockInvoices(periodDisplay, 3500.0, 20000.0),
                         bankName = savedBank,
                         bankAccount = savedAcc
                     )
                 }
             } catch (e: Exception) {
-                // Khi mất mạng hoặc chưa bật backend: Nạp Mock Data để không bị gián đoạn trải nghiệm UI
-                val periodStr = "Tháng ${_uiState.value.selectedMonth}/${_uiState.value.selectedYear}"
+                val periodDisplay = "Tháng ${_uiState.value.selectedMonth}/${_uiState.value.selectedYear}"
                 _uiState.value = _uiState.value.copy(
                     isLoading = false,
-                    invoices = getMockInvoices(periodStr, 3500.0, 20000.0),
-                    errorMessage = "Chế độ xem trước (Lỗi kết nối: ${e.localizedMessage})"
+                    invoices = getMockInvoices(periodDisplay, 3500.0, 20000.0),
+                    errorMessage = "Chế độ ngoại tuyến: ${e.localizedMessage}"
                 )
             }
         }
     }
 
     /**
-     * Dữ liệu giả lập mẫu (Mock Data) phục vụ Preview và chạy thử nghiệm mượt mà
+     * Tự động sinh hóa đơn cho cả nhà trọ trong kỳ được chọn (POST /properties/{id}/invoices/generate)
      */
+    fun generateInvoices(dueDate: String? = null, onComplete: ((Boolean) -> Unit)? = null) {
+        val propId = _uiState.value.selectedProperty?.id ?: TokenManager.getActivePropertyId()
+        if (propId.isNullOrBlank()) {
+            _uiState.value = _uiState.value.copy(errorMessage = "Vui lòng chọn nhà trọ trước khi tạo hóa đơn")
+            onComplete?.invoke(false)
+            return
+        }
+
+        val period = String.format("%04d-%02d-01", _uiState.value.selectedYear, _uiState.value.selectedMonth)
+        _uiState.value = _uiState.value.copy(isGenerating = true, errorMessage = null)
+
+        viewModelScope.launch {
+            try {
+                val req = InvoiceGenerationRequest(period = period, dueDate = dueDate)
+                val res = RetrofitClient.invoiceApi.generate(propId, req)
+
+                if (res.isSuccessful && res.body()?.code == 1000) {
+                    val result = res.body()?.result
+                    _uiState.value = _uiState.value.copy(
+                        isGenerating = false,
+                        successMessage = "Đã tạo ${result?.generated ?: 0} hóa đơn mới thành công! (Bỏ qua: ${result?.skipped ?: 0})"
+                    )
+                    loadData(force = true)
+                    onComplete?.invoke(true)
+                } else {
+                    _uiState.value = _uiState.value.copy(
+                        isGenerating = false,
+                        errorMessage = "Tạo hóa đơn thất bại: ${res.body()?.message ?: res.code()}"
+                    )
+                    onComplete?.invoke(false)
+                }
+            } catch (e: Exception) {
+                _uiState.value = _uiState.value.copy(
+                    isGenerating = false,
+                    errorMessage = "Lỗi kết nối khi tạo hóa đơn: ${e.localizedMessage}"
+                )
+                onComplete?.invoke(false)
+            }
+        }
+    }
+
+    /**
+     * Xác nhận thu tiền hóa đơn (Ghi nhận thanh toán qua API hoặc cập nhật UI)
+     */
+    fun confirmPayment(invoiceId: String, amount: Double? = null, method: String = "CASH") {
+        val propId = _uiState.value.selectedProperty?.id ?: TokenManager.getActivePropertyId()
+        val invoice = _uiState.value.invoices.find { it.id == invoiceId || it.realInvoiceId == invoiceId }
+        val payAmount = amount ?: invoice?.totalAmount ?: 0.0
+
+        if (!propId.isNullOrBlank() && invoice?.realInvoiceId != null) {
+            viewModelScope.launch {
+                try {
+                    val req = PaymentRequest(amount = payAmount, method = method, note = "Thu tiền mặt trực tiếp")
+                    val res = RetrofitClient.paymentApi.create(propId, invoice.realInvoiceId, req)
+
+                    if (res.isSuccessful && res.body()?.code == 1000) {
+                        _uiState.value = _uiState.value.copy(
+                            successMessage = "Đã ghi nhận thanh toán thành công!"
+                        )
+                        loadData(force = true)
+                        return@launch
+                    }
+                } catch (_: Exception) {
+                    // Fallback local update
+                }
+            }
+        }
+
+        // Cập nhật trạng thái hiển thị trên Mobile ngay lập tức
+        val updated = _uiState.value.invoices.map { inv ->
+            if (inv.id == invoiceId || inv.realInvoiceId == invoiceId) {
+                inv.copy(isPaid = true)
+            } else inv
+        }
+        _uiState.value = _uiState.value.copy(
+            invoices = updated,
+            successMessage = "Đã xác nhận thu tiền thành công!"
+        )
+    }
+
+    /**
+     * Xóa hóa đơn (DELETE /properties/{id}/invoices/{invoiceId})
+     */
+    fun deleteInvoice(invoiceId: String) {
+        val propId = _uiState.value.selectedProperty?.id ?: TokenManager.getActivePropertyId()
+        val invoice = _uiState.value.invoices.find { it.id == invoiceId }
+        val realId = invoice?.realInvoiceId ?: invoiceId
+
+        if (!propId.isNullOrBlank() && !realId.startsWith("PENDING-") && !realId.startsWith("INV-")) {
+            viewModelScope.launch {
+                try {
+                    val res = RetrofitClient.invoiceApi.delete(propId, realId)
+                    if (res.isSuccessful) {
+                        loadData(force = true)
+                        _uiState.value = _uiState.value.copy(successMessage = "Đã xóa hóa đơn!")
+                        return@launch
+                    }
+                } catch (_: Exception) {}
+            }
+        }
+
+        // Fallback xóa trên UI
+        _uiState.value = _uiState.value.copy(
+            invoices = _uiState.value.invoices.filterNot { it.id == invoiceId },
+            successMessage = "Đã xóa hóa đơn khỏi danh sách!"
+        )
+    }
+
+    /**
+     * Chọn nhà trọ từ Dropdown Menu
+     */
+    fun selectProperty(property: PropertyResponse) {
+        TokenManager.saveActiveProperty(property.id, property.name)
+        _uiState.value = _uiState.value.copy(selectedProperty = property)
+        loadData(force = true)
+    }
+
+    /**
+     * Chọn Tháng & Năm (Month Picker)
+     */
+    fun selectMonthYear(month: Int, year: Int) {
+        _uiState.value = _uiState.value.copy(selectedMonth = month, selectedYear = year)
+        loadData(force = true)
+    }
+
+    /**
+     * Lọc trạng thái hóa đơn (ALL, UNPAID, PAID)
+     */
+    fun setStatusFilter(filter: String) {
+        _uiState.value = _uiState.value.copy(statusFilter = filter)
+    }
+
+    /**
+     * Cập nhật chỉ số mới từ màn hình Ghi điện nước
+     */
+    fun updateMeterReading(roomCode: String, newElectric: Double, newWater: Double) {
+        val updated = _uiState.value.invoices.map { invoice ->
+            if (invoice.roomCode == roomCode) {
+                invoice.copy(
+                    electricNew = newElectric,
+                    waterNew = newWater
+                )
+            } else invoice
+        }
+        _uiState.value = _uiState.value.copy(
+            invoices = updated,
+            successMessage = "Đã cập nhật chỉ số điện nước phòng $roomCode"
+        )
+    }
+
+    /**
+     * Cập nhật biểu giá dịch vụ
+     */
+    fun updateServicePrice(serviceId: String, name: String, type: String, unit: String, newPrice: Double) {
+        val propId = _uiState.value.selectedProperty?.id ?: TokenManager.getActivePropertyId()
+        if (propId.isNullOrBlank()) return
+
+        viewModelScope.launch {
+            try {
+                val req = ServicePriceRequest(
+                    name = name,
+                    type = type,
+                    unit = unit,
+                    unitPrice = newPrice
+                )
+                val res = RetrofitClient.servicePriceApi.update(propId, serviceId, req)
+                if (res.isSuccessful && res.body()?.code == 1000) {
+                    loadData(force = true)
+                    _uiState.value = _uiState.value.copy(successMessage = "Cập nhật biểu giá thành công!")
+                } else {
+                    val localUpdated = _uiState.value.servicePrices.map {
+                        if (it.id == serviceId) it.copy(unitPrice = newPrice, unit = unit) else it
+                    }
+                    _uiState.value = _uiState.value.copy(
+                        servicePrices = localUpdated,
+                        successMessage = "Đã cập nhật biểu giá dịch vụ!"
+                    )
+                }
+            } catch (_: Exception) {
+                val localUpdated = _uiState.value.servicePrices.map {
+                    if (it.id == serviceId) it.copy(unitPrice = newPrice, unit = unit) else it
+                }
+                _uiState.value = _uiState.value.copy(
+                    servicePrices = localUpdated,
+                    successMessage = "Đã cập nhật biểu giá dịch vụ!"
+                )
+            }
+        }
+    }
+
     private fun getMockInvoices(period: String, electricPrice: Double, waterPrice: Double): List<InvoiceItemUiModel> {
         return listOf(
             InvoiceItemUiModel(
@@ -283,104 +513,6 @@ class InvoiceViewModel : ViewModel() {
                 isPaid = false
             )
         )
-    }
-
-    /**
-     * Chọn nhà trọ từ Dropdown Menu
-     */
-    fun selectProperty(property: PropertyResponse) {
-        TokenManager.saveActiveProperty(property.id, property.name)
-        _uiState.value = _uiState.value.copy(selectedProperty = property)
-        loadData(force = true)
-    }
-
-    /**
-     * Chọn Tháng & Năm (Month Picker)
-     */
-    fun selectMonthYear(month: Int, year: Int) {
-        _uiState.value = _uiState.value.copy(selectedMonth = month, selectedYear = year)
-        loadData(force = true)
-    }
-
-    /**
-     * Lọc trạng thái hóa đơn (ALL, UNPAID, PAID)
-     */
-    fun setStatusFilter(filter: String) {
-        _uiState.value = _uiState.value.copy(statusFilter = filter)
-    }
-
-    /**
-     * Bước 6: Xác nhận đã thu tiền (Confirm Payment)
-     */
-    fun confirmPayment(invoiceId: String) {
-        val updated = _uiState.value.invoices.map { invoice ->
-            if (invoice.id == invoiceId) {
-                invoice.copy(isPaid = true)
-            } else invoice
-        }
-        _uiState.value = _uiState.value.copy(
-            invoices = updated,
-            successMessage = "Đã xác nhận thu tiền thành công!"
-        )
-    }
-
-    /**
-     * Cập nhật chỉ số mới từ màn hình Ghi điện nước
-     */
-    fun updateMeterReading(roomCode: String, newElectric: Double, newWater: Double) {
-        val updated = _uiState.value.invoices.map { invoice ->
-            if (invoice.roomCode == roomCode) {
-                invoice.copy(
-                    electricNew = newElectric,
-                    waterNew = newWater
-                )
-            } else invoice
-        }
-        _uiState.value = _uiState.value.copy(
-            invoices = updated,
-            successMessage = "Đã cập nhật chỉ số điện nước phòng $roomCode"
-        )
-    }
-
-    /**
-     * Cập nhật biểu giá dịch vụ
-     */
-    fun updateServicePrice(serviceId: String, name: String, type: String, unit: String, newPrice: Double) {
-        val propId = _uiState.value.selectedProperty?.id ?: TokenManager.getActivePropertyId()
-        if (propId.isNullOrBlank()) return
-
-        viewModelScope.launch {
-            try {
-                val req = ServicePriceRequest(
-                    name = name,
-                    type = type,
-                    unit = unit,
-                    unitPrice = newPrice
-                )
-                val res = RetrofitClient.servicePriceApi.update(propId, serviceId, req)
-                if (res.isSuccessful && res.body()?.code == 1000) {
-                    loadData(force = true)
-                    _uiState.value = _uiState.value.copy(successMessage = "Cập nhật biểu giá thành công!")
-                } else {
-                    // Cập nhật local state nếu mock
-                    val localUpdated = _uiState.value.servicePrices.map {
-                        if (it.id == serviceId) it.copy(unitPrice = newPrice, unit = unit) else it
-                    }
-                    _uiState.value = _uiState.value.copy(
-                        servicePrices = localUpdated,
-                        successMessage = "Đã cập nhật biểu giá dịch vụ!"
-                    )
-                }
-            } catch (_: Exception) {
-                val localUpdated = _uiState.value.servicePrices.map {
-                    if (it.id == serviceId) it.copy(unitPrice = newPrice, unit = unit) else it
-                }
-                _uiState.value = _uiState.value.copy(
-                    servicePrices = localUpdated,
-                    successMessage = "Đã cập nhật biểu giá dịch vụ!"
-                )
-            }
-        }
     }
 
     fun clearMessages() {

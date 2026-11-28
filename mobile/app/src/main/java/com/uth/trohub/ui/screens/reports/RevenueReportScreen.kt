@@ -24,6 +24,7 @@ import androidx.compose.material.icons.filled.Download
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
@@ -110,6 +111,14 @@ fun RevenueReportScreen(
                 total = uiState.totalRooms,
                 activeCount = uiState.activeContracts.size
             )
+
+            if (uiState.monthlyData.isNotEmpty()) {
+                MonthlyBreakdownSection(
+                    monthlyData = uiState.monthlyData,
+                    formatter = formatter
+                )
+            }
+
             RecentContractsSection(
                 contracts = uiState.activeContracts,
                 formatter = formatter,
@@ -234,6 +243,64 @@ private fun ExportReportButton(onExportReport: () -> Unit) {
             Icon(Icons.Default.Download, null, tint = PrimaryGreen, modifier = Modifier.size(18.dp))
             Spacer(Modifier.width(7.dp))
             Text("Xuất báo cáo (Excel / PDF)", color = PrimaryGreen, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+        }
+    }
+}
+
+@Composable
+private fun MonthlyBreakdownSection(
+    monthlyData: List<com.uth.trohub.data.model.MonthlyRevenueSummary>,
+    formatter: NumberFormat
+) {
+    Card(
+        colors = CardDefaults.cardColors(containerColor = White),
+        shape = RoundedCornerShape(12.dp),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Text(
+                "Lịch sử doanh thu các tháng",
+                color = TextPrimary,
+                fontWeight = FontWeight.Bold,
+                fontSize = 14.sp
+            )
+
+            monthlyData.forEach { month ->
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column {
+                        Text(
+                            month.period,
+                            fontWeight = FontWeight.SemiBold,
+                            fontSize = 13.sp,
+                            color = TextPrimary
+                        )
+                        Text(
+                            "${month.invoiceCount} hóa đơn",
+                            fontSize = 11.sp,
+                            color = TextSecondary
+                        )
+                    }
+
+                    Column(horizontalAlignment = Alignment.End) {
+                        Text(
+                            formatter.format(month.totalRevenue),
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 13.sp,
+                            color = PrimaryGreen
+                        )
+                        Text(
+                            "Đã thu: ${formatter.format(month.totalPaid)}",
+                            fontSize = 11.sp,
+                            color = TextSecondary
+                        )
+                    }
+                }
+                HorizontalDivider(color = LightMint.copy(alpha = 0.5f))
+            }
         }
     }
 }

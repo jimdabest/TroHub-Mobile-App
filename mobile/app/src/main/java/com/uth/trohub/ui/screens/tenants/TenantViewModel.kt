@@ -200,6 +200,28 @@ class TenantViewModel : ViewModel() {
         }
     }
 
+    fun inviteTenant(tenantId: String, onResult: (String?) -> Unit) {
+        val propertyId = TokenManager.getActivePropertyId() ?: return
+        viewModelScope.launch {
+            try {
+                val res = RetrofitClient.tenantApi.invite(propertyId, tenantId)
+                if (res.isSuccessful && res.body()?.code == 1000) {
+                    val code = res.body()?.result?.code
+                    _uiState.value = _uiState.value.copy(successMessage = "Mã liên kết: $code")
+                    onResult(code)
+                } else {
+                    _uiState.value = _uiState.value.copy(
+                        errorMessage = "Tạo mã mời thất bại: ${res.body()?.message ?: res.code()}"
+                    )
+                    onResult(null)
+                }
+            } catch (e: Exception) {
+                _uiState.value = _uiState.value.copy(errorMessage = "Lỗi: ${e.localizedMessage}")
+                onResult(null)
+            }
+        }
+    }
+
     fun clearMessages() {
         _uiState.value = _uiState.value.copy(errorMessage = null, successMessage = null)
     }

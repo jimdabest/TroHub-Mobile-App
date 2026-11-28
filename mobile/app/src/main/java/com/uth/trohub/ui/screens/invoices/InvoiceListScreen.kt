@@ -52,6 +52,9 @@ fun InvoiceListScreen(
     // Quản lý BottomSheet chỉnh sửa biểu giá dịch vụ
     var showEditServicePriceSheet by remember { mutableStateOf(false) }
 
+    // Quản lý Dialog tạo hóa đơn tự động
+    var showGenerateInvoicesDialog by remember { mutableStateOf(false) }
+
     // Nếu đang xem chi tiết hóa đơn, hiển thị InvoiceDetailScreen
     if (selectedInvoiceForDetail != null) {
         InvoiceDetailScreen(
@@ -77,7 +80,32 @@ fun InvoiceListScreen(
         }
     }
 
-    Scaffold { innerPadding ->
+    Scaffold(
+        floatingActionButton = {
+            ExtendedFloatingActionButton(
+                onClick = { showGenerateInvoicesDialog = true },
+                icon = {
+                    if (uiState.isGenerating) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(20.dp),
+                            color = White,
+                            strokeWidth = 2.dp
+                        )
+                    } else {
+                        Icon(Icons.Default.Add, contentDescription = null, tint = White)
+                    }
+                },
+                text = {
+                    Text(
+                        if (uiState.isGenerating) "Đang tạo HĐ..." else "Tạo HĐ Tháng",
+                        color = White,
+                        fontWeight = FontWeight.Bold
+                    )
+                },
+                containerColor = PrimaryGreen
+            )
+        }
+    ) { innerPadding ->
         LazyColumn(
             modifier = Modifier
                 .fillMaxSize()
@@ -203,6 +231,43 @@ fun InvoiceListScreen(
             onDismiss = { showEditServicePriceSheet = false },
             onSaveServicePrice = { serviceId, name, type, unit, price ->
                 viewModel.updateServicePrice(serviceId, name, type, unit, price)
+            }
+        )
+    }
+
+    // 6. DIALOG TẠO HÓA ĐƠN TỰ ĐỘNG CHO TOÀN BỘ PHÒNG
+    if (showGenerateInvoicesDialog) {
+        AlertDialog(
+            onDismissRequest = { showGenerateInvoicesDialog = false },
+            title = {
+                Text(
+                    "Tạo Hóa Đơn Tự Động",
+                    fontWeight = FontWeight.Bold,
+                    color = TextPrimary
+                )
+            },
+            text = {
+                Text(
+                    "Hệ thống sẽ tự động tính toán tiền phòng, tiền điện, tiền nước và các phụ phí theo biểu giá hiện tại cho kỳ Tháng ${uiState.selectedMonth}/${uiState.selectedYear} cho toàn bộ các phòng đang có hợp đồng hiệu lực.\n\nBạn có muốn tiếp tục?",
+                    fontSize = 14.sp,
+                    color = TextSecondary
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showGenerateInvoicesDialog = false
+                        viewModel.generateInvoices()
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = PrimaryGreen)
+                ) {
+                    Text("Tạo ngay", color = White, fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showGenerateInvoicesDialog = false }) {
+                    Text("Hủy", color = TextSecondary)
+                }
             }
         )
     }

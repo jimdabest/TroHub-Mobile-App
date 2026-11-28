@@ -18,6 +18,7 @@ import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Message
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -48,6 +49,7 @@ fun TenantListScreen(
     var showAddDialog by remember { mutableStateOf(false) }
     var editingTenant by remember { mutableStateOf<TenantItemUiModel?>(null) }
     var deletingTenant by remember { mutableStateOf<TenantItemUiModel?>(null) }
+    var generatedInviteCode by remember { mutableStateOf<Pair<String, String>?>(null) } // (TenantName, Code)
 
     val filteredTenants = uiState.tenants.filter { tenant ->
         val query = uiState.searchQuery.trim().lowercase()
@@ -214,10 +216,68 @@ fun TenantListScreen(
                         }
                     },
                     onEdit = { editingTenant = tenant },
-                    onDelete = { deletingTenant = tenant }
+                    onDelete = { deletingTenant = tenant },
+                    onInvite = {
+                        viewModel.inviteTenant(tenant.id) { code ->
+                            if (!code.isNullOrBlank()) {
+                                generatedInviteCode = Pair(tenant.fullName, code)
+                            }
+                        }
+                    }
                 )
             }
         }
+    }
+
+    if (generatedInviteCode != null) {
+        val (name, code) = generatedInviteCode!!
+        AlertDialog(
+            onDismissRequest = { generatedInviteCode = null },
+            title = { Text("Mã Mời Khách Thuê", fontWeight = FontWeight.Bold, color = TextPrimary) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Mã liên kết tài khoản dành cho khách thuê $name:", fontSize = 14.sp, color = TextSecondary)
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(LightMint, RoundedCornerShape(8.dp))
+                            .padding(14.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = code,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 22.sp,
+                            color = PrimaryGreen,
+                            letterSpacing = 2.sp
+                        )
+                    }
+                    Text(
+                        "Khách thuê có thể tải app TroHub và nhập mã này để xem hợp đồng, hóa đơn và lịch sử đóng tiền.",
+                        fontSize = 12.sp,
+                        color = TextSecondary
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        val clipboard = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                        clipboard.setPrimaryClip(android.content.ClipData.newPlainText("Mã mời TroHub", code))
+                        android.widget.Toast.makeText(context, "Đã sao chép mã mời!", android.widget.Toast.LENGTH_SHORT).show()
+                        generatedInviteCode = null
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = PrimaryGreen)
+                ) {
+                    Text("Sao chép mã")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { generatedInviteCode = null }) {
+                    Text("Đóng")
+                }
+            }
+        )
     }
 
     if (showAddDialog) {
@@ -289,7 +349,8 @@ private fun TenantCard(
     onCall: () -> Unit,
     onSms: () -> Unit,
     onEdit: () -> Unit,
-    onDelete: () -> Unit
+    onDelete: () -> Unit,
+    onInvite: () -> Unit
 ) {
     Card(
         colors = CardDefaults.cardColors(containerColor = White),
@@ -337,6 +398,9 @@ private fun TenantCard(
                     }
                 }
 
+                IconButton(onClick = onInvite) {
+                    Icon(Icons.Default.Share, contentDescription = "Mời liên kết", tint = PrimaryGreen, modifier = Modifier.size(18.dp))
+                }
                 IconButton(onClick = onEdit) {
                     Icon(Icons.Default.Edit, contentDescription = "Sửa", tint = TextSecondary, modifier = Modifier.size(18.dp))
                 }

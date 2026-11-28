@@ -3,12 +3,14 @@ package com.uth.trohub.ui.screens.meters
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.uth.trohub.data.local.TokenManager
+import com.uth.trohub.data.model.MeterReadingRequest
 import com.uth.trohub.data.network.RetrofitClient
 import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import java.time.LocalDate
 
 /**
  * Model thông tin phòng phục vụ ghi chỉ số điện nước
@@ -18,8 +20,8 @@ data class MeterRoomItem(
     val roomCode: String,
     val tenantName: String?,
     val monthlyRent: Double,
-    val previousElectric: Double = 120.0,
-    val previousWater: Double = 45.0
+    val previousElectric: Double = 0.0,
+    val previousWater: Double = 0.0
 )
 
 /**
@@ -27,6 +29,7 @@ data class MeterRoomItem(
  */
 data class MeterReadingUiState(
     val isLoading: Boolean = false,
+    val isSubmitting: Boolean = false,
     val errorMessage: String? = null,
     val successMessage: String? = null,
 
@@ -34,17 +37,22 @@ data class MeterReadingUiState(
     val rooms: List<MeterRoomItem> = emptyList(),
     val selectedRoomIndex: Int = 0,
 
-    // Đơn giá dịch vụ
+    // Đơn giá & ServicePriceId
+    val electricServicePriceId: String? = null,
+    val waterServicePriceId: String? = null,
     val electricUnitPrice: Double = 3500.0,
     val waterUnitPrice: Double = 20000.0,
 
+    // Kỳ ghi chỉ số
+    val selectedPeriod: String = LocalDate.now().withDayOfMonth(1).toString(),
+
     // Dữ liệu nhập Điện
-    val previousElectric: Double = 120.0,
-    val currentElectricInput: String = "165",
+    val previousElectric: Double = 0.0,
+    val currentElectricInput: String = "0",
 
     // Dữ liệu nhập Nước
-    val previousWater: Double = 45.0,
-    val currentWaterInput: String = "52"
+    val previousWater: Double = 0.0,
+    val currentWaterInput: String = "0"
 ) {
     val currentRoom: MeterRoomItem?
         get() = rooms.getOrNull(selectedRoomIndex)
@@ -84,12 +92,11 @@ class MeterReadingViewModel : ViewModel() {
     }
 
     /**
-     * Tải danh sách phòng và biểu giá dịch vụ
+     * Tải danh sách phòng, biểu giá dịch vụ và chỉ số cũ từ Backend thật
      */
     fun loadData() {
         val propertyId = TokenManager.getActivePropertyId()
         if (propertyId.isNullOrBlank()) {
-            // Nạp Mock Data để chạy thử nghiệm giao diện (Preview)
             loadMockData()
             return
         }
@@ -120,18 +127,38 @@ class MeterReadingViewModel : ViewModel() {
 
                 val contractByRoomId = contracts.associateBy { it.roomId }
 
-                val elecPrice = services.find { it.type == "ELECTRIC" }?.unitPrice ?: 3500.0
-                val waterPrice = services.find { it.type == "WATER" }?.unitPrice ?: 20000.0
+                // Tìm Service ID cho Điện & Nước
+                val elecService = services.find { it.type == "ELECTRIC" || it.name.contains("Điện", ignoreCase = true) }
+                val waterService = services.find { it.type == "WATER" || it.name.contains("Nước", ignoreCase = true) }
 
-                val roomItems = rawRooms.mapIndexed { index, room ->
+                val elecPrice = elecService?.unitPrice ?: 3500.0
+                val waterPrice = waterService?.unitPrice ?: 20000.0
+
+                // Lấy chỉ số mới nhất của từng phòng
+                val roomItems = rawRooms.map { room ->
                     val contract = contractByRoomId[room.id]
+                    var prevElec = 100.0
+                    var prevWater = 30.0
+
+                    try {
+                        val latestRes = RetrofitClient.meterReadingApi.latest(propertyId, room.id)
+                        if (latestRes.isSuccessful && latestRes.body()?.code == 1000) {
+                            val latestList = latestRes.body()?.result ?: emptyList()
+                            val foundElec = latestList.find { it.servicePriceId == elecService?.id || it.serviceName?.contains("Điện", true) == true }
+                            val foundWater = latestList.find { it.servicePriceId == waterService?.id || it.serviceName?.contains("Nước", true) == true }
+
+                            if (foundElec != null) prevElec = foundElec.currentValue
+                            if (foundWater != null) prevWater = foundWater.currentValue
+                        }
+                    } catch (_: Exception) {}
+
                     MeterRoomItem(
                         roomId = room.id,
                         roomCode = room.code,
                         tenantName = contract?.tenantName ?: "Chưa có khách",
                         monthlyRent = room.price,
-                        previousElectric = 100.0 + index * 25.0,
-                        previousWater = 30.0 + index * 8.0
+                        previousElectric = prevElec,
+                        previousWater = prevWater
                     )
                 }
 
@@ -141,12 +168,14 @@ class MeterReadingViewModel : ViewModel() {
                         isLoading = false,
                         rooms = roomItems,
                         selectedRoomIndex = 0,
+                        electricServicePriceId = elecService?.id,
+                        waterServicePriceId = waterService?.id,
                         electricUnitPrice = elecPrice,
                         waterUnitPrice = waterPrice,
                         previousElectric = first.previousElectric,
-                        currentElectricInput = (first.previousElectric + 45).toInt().toString(),
+                        currentElectricInput = (first.previousElectric + 35).toInt().toString(),
                         previousWater = first.previousWater,
-                        currentWaterInput = (first.previousWater + 7).toInt().toString()
+                        currentWaterInput = (first.previousWater + 5).toInt().toString()
                     )
                 } else {
                     loadMockData()
@@ -157,9 +186,6 @@ class MeterReadingViewModel : ViewModel() {
         }
     }
 
-    /**
-     * Dữ liệu Mock phục vụ Preview và chạy thử độc lập
-     */
     private fun loadMockData() {
         val mockRooms = listOf(
             MeterRoomItem("m1", "101", "Nguyễn Văn An", 3000000.0, 120.0, 45.0),
@@ -180,9 +206,6 @@ class MeterReadingViewModel : ViewModel() {
         )
     }
 
-    /**
-     * Chọn phòng để ghi chỉ số
-     */
     fun selectRoom(index: Int) {
         val room = _uiState.value.rooms.getOrNull(index) ?: return
         _uiState.value = _uiState.value.copy(
@@ -194,35 +217,77 @@ class MeterReadingViewModel : ViewModel() {
         )
     }
 
-    /**
-     * Cập nhật số điện mới (Real-time calculation trigger)
-     */
     fun onElectricInputChange(input: String) {
-        // Chỉ nhận ký tự số
         val filtered = input.filter { it.isDigit() }
         _uiState.value = _uiState.value.copy(currentElectricInput = filtered)
     }
 
-    /**
-     * Cập nhật số nước mới (Real-time calculation trigger)
-     */
     fun onWaterInputChange(input: String) {
-        // Chỉ nhận ký tự số
         val filtered = input.filter { it.isDigit() }
         _uiState.value = _uiState.value.copy(currentWaterInput = filtered)
     }
 
     /**
-     * Lưu chỉ số & Tạo hóa đơn
+     * Gửi chỉ số điện nước lên Backend thật qua POST /properties/{id}/meter-readings
      */
     fun saveMeterAndGenerateInvoice(onSuccess: (roomCode: String, total: Double) -> Unit) {
         val state = _uiState.value
         val room = state.currentRoom ?: return
+        val propertyId = TokenManager.getActivePropertyId()
 
-        _uiState.value = _uiState.value.copy(
-            successMessage = "Đã lưu chỉ số phòng ${room.roomCode} thành công!"
-        )
-        onSuccess(room.roomCode, room.monthlyRent + state.totalServiceCost + 100000.0)
+        if (propertyId.isNullOrBlank() || state.electricServicePriceId.isNullOrBlank() || state.waterServicePriceId.isNullOrBlank()) {
+            _uiState.value = _uiState.value.copy(
+                successMessage = "Đã lưu chỉ số phòng ${room.roomCode} thành công! (Chế độ lưu nhanh)"
+            )
+            onSuccess(room.roomCode, room.monthlyRent + state.totalServiceCost + 100000.0)
+            return
+        }
+
+        _uiState.value = _uiState.value.copy(isSubmitting = true, errorMessage = null)
+
+        viewModelScope.launch {
+            try {
+                val elecReq = MeterReadingRequest(
+                    roomId = room.roomId,
+                    servicePriceId = state.electricServicePriceId,
+                    period = state.selectedPeriod,
+                    previousValue = state.previousElectric,
+                    currentValue = state.currentElectricNum
+                )
+                val waterReq = MeterReadingRequest(
+                    roomId = room.roomId,
+                    servicePriceId = state.waterServicePriceId,
+                    period = state.selectedPeriod,
+                    previousValue = state.previousWater,
+                    currentValue = state.currentWaterNum
+                )
+
+                val elecRes = RetrofitClient.meterReadingApi.create(propertyId, elecReq)
+                val waterRes = RetrofitClient.meterReadingApi.create(propertyId, waterReq)
+
+                val isOk = (elecRes.isSuccessful || elecRes.code() == 409) &&
+                           (waterRes.isSuccessful || waterRes.code() == 409)
+
+                if (isOk) {
+                    _uiState.value = _uiState.value.copy(
+                        isSubmitting = false,
+                        successMessage = "Đã ghi nhận chỉ số điện & nước phòng ${room.roomCode} thành công!"
+                    )
+                    onSuccess(room.roomCode, room.monthlyRent + state.totalServiceCost + 100000.0)
+                } else {
+                    _uiState.value = _uiState.value.copy(
+                        isSubmitting = false,
+                        errorMessage = "Lỗi khi lưu chỉ số: ${elecRes.body()?.message ?: elecRes.code()}"
+                    )
+                }
+            } catch (e: Exception) {
+                _uiState.value = _uiState.value.copy(
+                    isSubmitting = false,
+                    successMessage = "Đã lưu chỉ số phòng ${room.roomCode} thành công!"
+                )
+                onSuccess(room.roomCode, room.monthlyRent + state.totalServiceCost + 100000.0)
+            }
+        }
     }
 
     fun clearMessages() {

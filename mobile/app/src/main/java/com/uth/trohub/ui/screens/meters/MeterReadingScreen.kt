@@ -93,20 +93,31 @@ fun MeterReadingScreen(
                                 onSaveAndNext()
                             }
                         },
+                        enabled = !uiState.isSubmitting,
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(52.dp),
                         colors = ButtonDefaults.buttonColors(containerColor = PrimaryGreen),
                         shape = RoundedCornerShape(12.dp)
                     ) {
-                        Icon(Icons.Default.ReceiptLong, contentDescription = null, tint = White)
-                        Spacer(Modifier.width(8.dp))
-                        Text(
-                            "Lưu Chỉ Số & Tạo Hóa Đơn",
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 15.sp,
-                            color = White
-                        )
+                        if (uiState.isSubmitting) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(22.dp),
+                                color = White,
+                                strokeWidth = 2.dp
+                            )
+                            Spacer(Modifier.width(8.dp))
+                            Text("Đang lưu chỉ số...", fontWeight = FontWeight.Bold, fontSize = 15.sp, color = White)
+                        } else {
+                            Icon(Icons.Default.ReceiptLong, contentDescription = null, tint = White)
+                            Spacer(Modifier.width(8.dp))
+                            Text(
+                                "Lưu Chỉ Số & Tạo Hóa Đơn",
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 15.sp,
+                                color = White
+                            )
+                        }
                     }
                 }
             }

@@ -1,6 +1,7 @@
 package com.uth.trohub.data.network
 
 import com.uth.trohub.data.model.ApiResponse
+import com.uth.trohub.data.model.TenantInviteResponse
 import com.uth.trohub.data.model.TenantRequest
 import com.uth.trohub.data.model.TenantResponse
 import retrofit2.Response
@@ -42,4 +43,10 @@ interface TenantApiService {
         @Path("propertyId") propertyId: String,
         @Path("tenantId") tenantId: String
     ): Response<ApiResponse<Unit>>
+
+    @POST("properties/{propertyId}/tenants/{tenantId}/invite")
+    suspend fun invite(
+        @Path("propertyId") propertyId: String,
+        @Path("tenantId") tenantId: String
+    ): Response<ApiResponse<TenantInviteResponse>>
 }
