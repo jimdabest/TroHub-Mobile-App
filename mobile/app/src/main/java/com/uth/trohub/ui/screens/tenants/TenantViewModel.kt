@@ -72,9 +72,9 @@ class TenantViewModel : ViewModel() {
                 val contractRes = contractDeferred.await()
 
                 if (tenantRes.isSuccessful && tenantRes.body()?.code == 1000) {
-                    val rawTenants = tenantRes.body()?.result ?: emptyList()
+                    val rawTenants = tenantRes.body()?.result?.items ?: emptyList()
                     val contracts = if (contractRes.isSuccessful && contractRes.body()?.code == 1000) {
-                        contractRes.body()?.result ?: emptyList()
+                        contractRes.body()?.result?.items ?: emptyList()
                     } else emptyList()
 
                     val contractByTenantId = contracts.associateBy { it.tenantId }

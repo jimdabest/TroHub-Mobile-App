@@ -72,7 +72,7 @@ class RevenueReportViewModel : ViewModel() {
                 val roomRes = RetrofitClient.roomApi.list(propertyId)
 
                 val contracts = if (contractRes.isSuccessful && contractRes.body()?.code == 1000) {
-                    contractRes.body()?.result ?: emptyList()
+                    contractRes.body()?.result?.items ?: emptyList()
                 } else emptyList()
 
                 val rooms = if (roomRes.isSuccessful && roomRes.body()?.code == 1000) {

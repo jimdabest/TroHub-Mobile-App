@@ -122,7 +122,7 @@ class MeterReadingViewModel : ViewModel() {
                 } else emptyList()
 
                 val contracts = if (contractRes.isSuccessful && contractRes.body()?.code == 1000) {
-                    contractRes.body()?.result ?: emptyList()
+                    contractRes.body()?.result?.items ?: emptyList()
                 } else emptyList()
 
                 val contractByRoomId = contracts.associateBy { it.roomId }

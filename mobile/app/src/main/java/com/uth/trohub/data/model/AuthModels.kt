@@ -6,6 +6,15 @@ data class ApiResponse<T>(
     val result: T? = null
 )
 
+data class PageResponse<T>(
+    val items: List<T> = emptyList(),
+    val page: Int = 0,
+    val size: Int = 100,
+    val totalItems: Long = 0,
+    val totalPages: Int = 0,
+    val hasNext: Boolean = false
+)
+
 data class AuthRequest(
     val username: String,
     val password: String

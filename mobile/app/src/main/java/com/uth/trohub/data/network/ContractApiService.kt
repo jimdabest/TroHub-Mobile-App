@@ -5,6 +5,7 @@ import com.uth.trohub.data.model.ContractCreationRequest
 import com.uth.trohub.data.model.ContractOccupantsRequest
 import com.uth.trohub.data.model.ContractRenewRequest
 import com.uth.trohub.data.model.ContractResponse
+import com.uth.trohub.data.model.PageResponse
 import com.uth.trohub.data.model.TerminateContractRequest
 import retrofit2.Response
 import retrofit2.http.Body
@@ -19,8 +20,10 @@ interface ContractApiService {
     @GET("properties/{propertyId}/contracts")
     suspend fun list(
         @Path("propertyId") propertyId: String,
-        @Query("status") status: String? = null
-    ): Response<ApiResponse<List<ContractResponse>>>
+        @Query("status") status: String? = null,
+        @Query("page") page: Int = 0,
+        @Query("size") size: Int = 100
+    ): Response<ApiResponse<PageResponse<ContractResponse>>>
 
     @GET("properties/{propertyId}/contracts/{contractId}")
     suspend fun get(

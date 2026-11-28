@@ -137,7 +137,7 @@ class HomeViewModel : ViewModel() {
             } else emptyList()
 
             val contracts = if (contractRes.isSuccessful && contractRes.body()?.code == 1000) {
-                contractRes.body()?.result ?: emptyList()
+                contractRes.body()?.result?.items ?: emptyList()
             } else emptyList()
 
             val services = if (serviceRes.isSuccessful && serviceRes.body()?.code == 1000) {

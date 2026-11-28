@@ -86,7 +86,7 @@ class RoomViewModel : ViewModel() {
                 if (roomRes.isSuccessful && roomRes.body()?.code == 1000) {
                     val rawRooms = roomRes.body()?.result ?: emptyList()
                     val contracts = if (contractRes.isSuccessful && contractRes.body()?.code == 1000) {
-                        contractRes.body()?.result ?: emptyList()
+                        contractRes.body()?.result?.items ?: emptyList()
                     } else emptyList()
 
                     val contractByRoomId = contracts.associateBy { it.roomId }
@@ -135,7 +135,7 @@ class RoomViewModel : ViewModel() {
                 val res = RetrofitClient.tenantApi.list(propertyId)
                 if (res.isSuccessful && res.body()?.code == 1000) {
                     _uiState.value = _uiState.value.copy(
-                        tenants = res.body()?.result ?: emptyList()
+                        tenants = res.body()?.result?.items ?: emptyList()
                     )
                 }
             } catch (_: Exception) {}
